@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from app import debug_collector as dbg
@@ -40,6 +41,19 @@ _REJECT_WORDS = {
     "update", "revise", "rethink", "incorrect", "not right", "but",
     "however", "actually", "wait", "hold on",
 }
+
+
+def _whole_word_pattern(phrases: set[str]) -> re.Pattern[str]:
+    """Compile a regex matching any phrase as whole words, so 'no' does not match 'now'."""
+    alternatives = "|".join(
+        re.escape(p).replace(r"\ ", r"\s+")
+        for p in sorted(phrases, key=len, reverse=True)
+    )
+    return re.compile(rf"\b(?:{alternatives})\b")
+
+
+_APPROVE_RE = _whole_word_pattern(_APPROVE_WORDS)
+_REJECT_RE = _whole_word_pattern(_REJECT_WORDS)
 
 
 # ---------------------------------------------------------------------------
@@ -118,10 +132,11 @@ def _detect_approval(message: str) -> str | None:
     Returns "approve", "reject", or None (ambiguous) based on keyword scan.
     Fast check — no LLM needed for clear cases.
     """
-    lower = message.lower().strip()
+    # Normalise curly apostrophes so "that’s right" matches "that's right"
+    lower = message.lower().strip().replace("’", "'")
 
-    approve_hit = any(w in lower for w in _APPROVE_WORDS)
-    reject_hit = any(w in lower for w in _REJECT_WORDS)
+    approve_hit = bool(_APPROVE_RE.search(lower))
+    reject_hit = bool(_REJECT_RE.search(lower))
 
     # Clear approval with no reject signals
     if approve_hit and not reject_hit:
