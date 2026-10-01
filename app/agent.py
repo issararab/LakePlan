@@ -401,11 +401,19 @@ class PricingAgent:
 
         Uses a keyword scan first; falls back to LLM classification for ambiguous messages.
         Tracks consecutive rejections and resets to context collection after
-        _MAX_APPROVAL_REJECTIONS to avoid an infinite loop.
+        _MAX_APPROVAL_REJECTIONS to avoid an infinite loop. A clear approval always
+        proceeds to pricing, even after the rejection limit is reached.
         """
         decision = _detect_approval(message)
 
-        # Stuck-loop safety valve
+        if decision == "approve":
+            dbg.add("Approval", "Architecture approved by user", "transition")
+            dbg.add("Transition", "architecture_approval → pricing", "transition")
+            self._state.context = self._state.context.merge({"architecture_approved": True})
+            self._state.phase = AgentPhase.PRICING
+            return self._calculate_pricing()
+
+        # Stuck-loop safety valve — checked after approval so the user can still accept
         if self._state.consecutive_approval_rejections >= _MAX_APPROVAL_REJECTIONS:
             self._state.phase = AgentPhase.CONTEXT_COLLECTION
             self._state.consecutive_approval_rejections = 0
@@ -418,13 +426,6 @@ class PricingAgent:
                 response_type="message",
                 phase=AgentPhase.CONTEXT_COLLECTION,
             )
-
-        if decision == "approve":
-            dbg.add("Approval", "Architecture approved by user", "transition")
-            dbg.add("Transition", "architecture_approval → pricing", "transition")
-            self._state.context = self._state.context.merge({"architecture_approved": True})
-            self._state.phase = AgentPhase.PRICING
-            return self._calculate_pricing()
 
         if decision == "reject":
             self._state.consecutive_approval_rejections += 1
