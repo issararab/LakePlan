@@ -1,0 +1,216 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 625" width="960" height="625" font-family="'Segoe UI', Arial, sans-serif">
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrs" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <path d="M0,0 L0,5 L7,2.5 z" fill="#9ca3af"/>
+    </marker>
+    <marker id="arrr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#f87171"/>
+    </marker>
+    <marker id="arry" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="625" fill="#f9fafb" rx="14"/>
+
+  <!-- ═══ TITLE ═══ -->
+  <text x="480" y="26" text-anchor="middle" font-size="17" font-weight="700" fill="#111827">LakePlan — System Architecture</text>
+
+  <!-- ═══ BROWSER / REACT UI ═══ -->
+  <rect x="370" y="38" width="220" height="65" rx="10" fill="#1e40af" stroke="#3b82f6" stroke-width="2"/>
+  <text x="480" y="60" text-anchor="middle" font-size="12" font-weight="700" fill="white">Browser / React UI</text>
+  <text x="480" y="76" text-anchor="middle" font-size="9.5" fill="#bfdbfe">React + Vite  ·  Session UUID (sessionStorage)</text>
+  <text x="480" y="91" text-anchor="middle" font-size="9.5" fill="#bfdbfe">User Mode  ·  Debug Mode</text>
+
+  <!-- POST /chat arrow down -->
+  <line x1="488" y1="103" x2="488" y2="143" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="510" y="127" font-size="8.5" fill="#6b7280">POST /chat</text>
+  <!-- JSON response arrow up (dashed) -->
+  <line x1="472" y1="143" x2="472" y2="103" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <text x="425" y="126" text-anchor="middle" font-size="8.5" fill="#6b7280">JSON resp</text>
+
+  <!-- ═══ FASTAPI BACKEND ═══ -->
+  <rect x="370" y="145" width="220" height="52" rx="10" fill="#065f46" stroke="#34d399" stroke-width="2"/>
+  <text x="480" y="167" text-anchor="middle" font-size="12" font-weight="700" fill="white">FastAPI Backend</text>
+  <text x="480" y="184" text-anchor="middle" font-size="9.5" fill="#a7f3d0">/chat · /reset · /health · Session Registry</text>
+
+  <!-- FastAPI → Agent arrow -->
+  <line x1="480" y1="197" x2="480" y2="218" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- ═══ LLM PROVIDER (right column) ═══ -->
+  <rect x="748" y="145" width="192" height="148" rx="10" fill="#450a0a" stroke="#f87171" stroke-width="2"/>
+  <!-- header -->
+  <rect x="748" y="145" width="192" height="30" rx="10" fill="#dc2626"/>
+  <rect x="748" y="163" width="192" height="12" fill="#dc2626"/>
+  <text x="844" y="165" text-anchor="middle" font-size="11.5" font-weight="700" fill="white">LLM Provider</text>
+  <!-- body -->
+  <text x="844" y="193" text-anchor="middle" font-size="9.5" fill="#fca5a5">app/llm.py  ·  LLMProvider ABC</text>
+  <text x="844" y="209" text-anchor="middle" font-size="9.5" fill="#fca5a5">Databricks (OpenAI-compatible)</text>
+  <text x="844" y="225" text-anchor="middle" font-size="9.5" fill="#fca5a5">Anthropic API</text>
+  <text x="844" y="247" text-anchor="middle" font-size="8.5" fill="#6b7280">LLM_PROVIDER = databricks | anthropic</text>
+  <text x="844" y="262" text-anchor="middle" font-size="8.5" fill="#6b7280">DATABRICKS_LLM_ENDPOINT</text>
+  <text x="844" y="276" text-anchor="middle" font-size="8.5" fill="#6b7280">ANTHROPIC_API_KEY / ANTHROPIC_MODEL</text>
+
+  <!-- FastAPI ↔ LLM Provider (dashed red) -->
+  <line x1="590" y1="162" x2="748" y2="180" stroke="#f87171" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrr)"/>
+  <text x="669" y="163" text-anchor="middle" font-size="8.5" fill="#f87171">LLM calls</text>
+
+  <!-- LLM Provider → Agent State Machine -->
+  <line x1="748" y1="250" x2="734" y2="298" stroke="#f87171" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrr)"/>
+  <text x="755" y="266" font-size="8" fill="#f87171">agent</text>
+  <text x="755" y="277" font-size="8" fill="#f87171">calls</text>
+
+  <!-- ═══ AGENT STATE MACHINE CONTAINER ═══ -->
+  <rect x="20" y="222" width="714" height="298" rx="12" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6,4"/>
+  <text x="377" y="240" text-anchor="middle" font-size="10.5" font-weight="600" fill="#475569">Agent State Machine (app/agent.py)</text>
+
+  <!-- ─── Phase 1: Context Collection ─── -->
+  <rect x="34" y="248" width="158" height="110" rx="8" fill="white" stroke="#3b82f6" stroke-width="2"/>
+  <rect x="34" y="248" width="158" height="28" rx="8" fill="#2563eb"/>
+  <rect x="34" y="264" width="158" height="12" fill="#2563eb"/>
+  <text x="113" y="267" text-anchor="middle" font-size="10" font-weight="700" fill="white">① Context Collection</text>
+  <text x="113" y="292" text-anchor="middle" font-size="8.5" fill="#1d4ed8">LLM extracts structured</text>
+  <text x="113" y="305" text-anchor="middle" font-size="8.5" fill="#1d4ed8">fields from conversation</text>
+  <text x="113" y="318" text-anchor="middle" font-size="8.5" fill="#1d4ed8">completeness check</text>
+  <text x="113" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">context_extractor.py · schemas.py</text>
+
+  <line x1="192" y1="303" x2="208" y2="303" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrs)"/>
+
+  <!-- ─── Phase 2: Architecture Proposal ─── -->
+  <rect x="208" y="248" width="158" height="110" rx="8" fill="white" stroke="#22c55e" stroke-width="2"/>
+  <rect x="208" y="248" width="158" height="28" rx="8" fill="#16a34a"/>
+  <rect x="208" y="264" width="158" height="12" fill="#16a34a"/>
+  <text x="287" y="267" text-anchor="middle" font-size="10" font-weight="700" fill="white">② Arch. Proposal</text>
+  <text x="287" y="292" text-anchor="middle" font-size="8.5" fill="#166534">Rule engine → ingestion</text>
+  <text x="287" y="305" text-anchor="middle" font-size="8.5" fill="#166534">compute + serving recs</text>
+  <text x="287" y="318" text-anchor="middle" font-size="8.5" fill="#166534">LLM generates diagram</text>
+  <text x="287" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">rules.py · architecture_generator.py</text>
+
+  <line x1="366" y1="303" x2="382" y2="303" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrs)"/>
+
+  <!-- ─── Phase 3: Architecture Approval ─── -->
+  <rect x="382" y="248" width="158" height="110" rx="8" fill="white" stroke="#f97316" stroke-width="2"/>
+  <rect x="382" y="248" width="158" height="28" rx="8" fill="#ea580c"/>
+  <rect x="382" y="264" width="158" height="12" fill="#ea580c"/>
+  <text x="461" y="267" text-anchor="middle" font-size="10" font-weight="700" fill="white">③ Arch. Approval</text>
+  <text x="461" y="292" text-anchor="middle" font-size="8.5" fill="#9a3412">User approves or</text>
+  <text x="461" y="305" text-anchor="middle" font-size="8.5" fill="#9a3412">requests changes</text>
+  <text x="461" y="318" text-anchor="middle" font-size="8.5" fill="#9a3412">loop (≤ 3 rejections)</text>
+  <text x="461" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">architecture_generator.py</text>
+
+  <line x1="540" y1="303" x2="556" y2="303" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrs)"/>
+
+  <!-- ─── Phase 4: Pricing Pipeline ─── -->
+  <rect x="556" y="248" width="162" height="110" rx="8" fill="white" stroke="#a855f7" stroke-width="2"/>
+  <rect x="556" y="248" width="162" height="28" rx="8" fill="#9333ea"/>
+  <rect x="556" y="264" width="162" height="12" fill="#9333ea"/>
+  <text x="637" y="267" text-anchor="middle" font-size="10" font-weight="700" fill="white">④ Pricing Pipeline</text>
+  <text x="637" y="292" text-anchor="middle" font-size="8.5" fill="#6b21a8">Planner → QuerySpec</text>
+  <text x="637" y="305" text-anchor="middle" font-size="8.5" fill="#6b21a8">SQL Generator → DuckDB</text>
+  <text x="637" y="318" text-anchor="middle" font-size="8.5" fill="#6b21a8">Validator → Synthesis</text>
+  <text x="637" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">planner.py · sql_generator.py</text>
+
+  <!-- ─── Pricing Pipeline Detail Row ─── -->
+  <rect x="34" y="370" width="692" height="132" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="380" y="387" text-anchor="middle" font-size="9" font-weight="600" fill="#64748b">Pricing Pipeline — Step Detail</text>
+
+  <!-- Sub-box 1: Planner -->
+  <rect x="44" y="394" width="116" height="96" rx="6" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <rect x="44" y="394" width="116" height="24" rx="6" fill="#9333ea"/>
+  <rect x="44" y="406" width="116" height="12" fill="#9333ea"/>
+  <text x="102" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">Planner</text>
+  <text x="102" y="432" text-anchor="middle" font-size="8.5" fill="#7e22ce">LLM decision:</text>
+  <text x="102" y="445" text-anchor="middle" font-size="8.5" fill="#7e22ce">ask | query</text>
+  <text x="102" y="458" text-anchor="middle" font-size="8.5" fill="#7e22ce">→ QuerySpec list</text>
+  <text x="102" y="474" text-anchor="middle" font-size="7.5" fill="#94a3b8">planner.py</text>
+
+  <line x1="160" y1="442" x2="170" y2="442" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrs)"/>
+
+  <!-- Sub-box 2: SQL Generator -->
+  <rect x="170" y="394" width="116" height="96" rx="6" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <rect x="170" y="394" width="116" height="24" rx="6" fill="#9333ea"/>
+  <rect x="170" y="406" width="116" height="12" fill="#9333ea"/>
+  <text x="228" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">SQL Generator</text>
+  <text x="228" y="432" text-anchor="middle" font-size="8.5" fill="#7e22ce">LLM → SELECT</text>
+  <text x="228" y="445" text-anchor="middle" font-size="8.5" fill="#7e22ce">extract from resp</text>
+  <text x="228" y="458" text-anchor="middle" font-size="8.5" fill="#7e22ce">1 repair retry</text>
+  <text x="228" y="474" text-anchor="middle" font-size="7.5" fill="#94a3b8">sql_generator.py</text>
+
+  <line x1="286" y1="442" x2="296" y2="442" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrs)"/>
+
+  <!-- Sub-box 3: SQL Validator -->
+  <rect x="296" y="394" width="116" height="96" rx="6" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <rect x="296" y="394" width="116" height="24" rx="6" fill="#16a34a"/>
+  <rect x="296" y="406" width="116" height="12" fill="#16a34a"/>
+  <text x="354" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">SQL Validator</text>
+  <text x="354" y="432" text-anchor="middle" font-size="8.5" fill="#166534">SQLGlot AST parse</text>
+  <text x="354" y="445" text-anchor="middle" font-size="8.5" fill="#166534">SELECT-only guard</text>
+  <text x="354" y="458" text-anchor="middle" font-size="8.5" fill="#166534">auto-LIMIT ≤ 100</text>
+  <text x="354" y="474" text-anchor="middle" font-size="7.5" fill="#94a3b8">sql_validator.py</text>
+
+  <line x1="412" y1="442" x2="422" y2="442" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrs)"/>
+
+  <!-- Sub-box 4: DuckDB Execution -->
+  <rect x="422" y="394" width="116" height="96" rx="6" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  <rect x="422" y="394" width="116" height="24" rx="6" fill="#d97706"/>
+  <rect x="422" y="406" width="116" height="12" fill="#d97706"/>
+  <text x="480" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">DuckDB Exec</text>
+  <text x="480" y="432" text-anchor="middle" font-size="8.5" fill="#92400e">read_only = True</text>
+  <text x="480" y="445" text-anchor="middle" font-size="8.5" fill="#92400e">≤ 100 rows / query</text>
+  <text x="480" y="458" text-anchor="middle" font-size="8.5" fill="#92400e">3 tables · Azure DE</text>
+  <text x="480" y="474" text-anchor="middle" font-size="7.5" fill="#94a3b8">duckdb_client.py</text>
+
+  <line x1="538" y1="442" x2="548" y2="442" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrs)"/>
+
+  <!-- Sub-box 5: Synthesis LLM -->
+  <rect x="548" y="394" width="168" height="96" rx="6" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <rect x="548" y="394" width="168" height="24" rx="6" fill="#9333ea"/>
+  <rect x="548" y="406" width="168" height="12" fill="#9333ea"/>
+  <text x="632" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">Synthesis LLM</text>
+  <text x="632" y="432" text-anchor="middle" font-size="8.5" fill="#6b21a8">question + SQL + rows</text>
+  <text x="632" y="445" text-anchor="middle" font-size="8.5" fill="#6b21a8">→ grounded cost estimate</text>
+  <text x="632" y="458" text-anchor="middle" font-size="8.5" fill="#6b21a8">never invents prices</text>
+  <text x="632" y="474" text-anchor="middle" font-size="7.5" fill="#94a3b8">prompts.py · SYNTHESIS_PROMPT</text>
+
+  <!-- ═══ DUCKDB DATABASE (right column) ═══ -->
+  <rect x="748" y="408" width="192" height="164" rx="10" fill="#451a03" stroke="#f59e0b" stroke-width="2"/>
+  <!-- header -->
+  <rect x="748" y="408" width="192" height="30" rx="10" fill="#d97706"/>
+  <rect x="748" y="426" width="192" height="12" fill="#d97706"/>
+  <text x="844" y="428" text-anchor="middle" font-size="11" font-weight="700" fill="white">DuckDB · pricing.duckdb</text>
+  <!-- body -->
+  <text x="844" y="457" text-anchor="middle" font-size="9" font-weight="600" fill="#fcd34d">azure_web_price_rates_germany</text>
+  <text x="844" y="471" text-anchor="middle" font-size="8.5" fill="#92400e">VM + DBU rates (pay-as-you-go)</text>
+  <text x="844" y="489" text-anchor="middle" font-size="9" font-weight="600" fill="#fcd34d">azure_dbx_system_price_rates</text>
+  <text x="844" y="503" text-anchor="middle" font-size="8.5" fill="#92400e">SKU / DBU rates · pricing = JSON</text>
+  <text x="844" y="521" text-anchor="middle" font-size="9" font-weight="600" fill="#fcd34d">azure_web_storage_rates_germany</text>
+  <text x="844" y="535" text-anchor="middle" font-size="8.5" fill="#92400e">ADLS Gen2 · Hot/Cool/Cold/Archive</text>
+  <text x="844" y="554" text-anchor="middle" font-size="8" fill="#6b7280">Azure Germany West Central · USD · Read-only</text>
+
+  <!-- DuckDB Exec → DuckDB DB connection (dashed yellow) -->
+  <!-- Route: right edge of Phase 4 box (718, 332) down-right to DuckDB DB left (748, 450) -->
+  <polyline points="718,332 734,332 734,450 748,450" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arry)"/>
+  <text x="744" y="392" text-anchor="middle" font-size="8" fill="#f59e0b" transform="rotate(-90, 744, 392)">SQL queries</text>
+
+  <!-- ═══ LEGEND ═══ -->
+  <rect x="20" y="530" width="714" height="48" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="377" y="547" text-anchor="middle" font-size="9" font-weight="600" fill="#64748b">Legend</text>
+
+  <rect x="38" y="554" width="11" height="11" rx="2" fill="#1e40af"/><text x="53" y="564" font-size="8.5" fill="#475569">Frontend</text>
+  <rect x="115" y="554" width="11" height="11" rx="2" fill="#065f46"/><text x="130" y="564" font-size="8.5" fill="#475569">FastAPI</text>
+  <rect x="188" y="554" width="11" height="11" rx="2" fill="#2563eb"/><text x="203" y="564" font-size="8.5" fill="#475569">Context / Collection</text>
+  <rect x="306" y="554" width="11" height="11" rx="2" fill="#16a34a"/><text x="321" y="564" font-size="8.5" fill="#475569">Rules / Validation</text>
+  <rect x="414" y="554" width="11" height="11" rx="2" fill="#ea580c"/><text x="429" y="564" font-size="8.5" fill="#475569">User Interaction</text>
+  <rect x="519" y="554" width="11" height="11" rx="2" fill="#9333ea"/><text x="534" y="564" font-size="8.5" fill="#475569">LLM Calls</text>
+  <rect x="594" y="554" width="11" height="11" rx="2" fill="#d97706"/><text x="609" y="564" font-size="8.5" fill="#475569">Data Storage</text>
+  <rect x="676" y="554" width="11" height="11" rx="2" fill="#dc2626"/><text x="691" y="564" font-size="8.5" fill="#475569">LLM Provider</text>
+
+  <!-- Footer -->
+  <text x="480" y="606" text-anchor="middle" font-size="8.5" fill="#9ca3af">LakePlan · FastAPI + React + DuckDB · Azure Germany West Central</text>
+
+</svg>

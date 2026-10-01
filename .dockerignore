@@ -1,0 +1,10 @@
+.env
+.env.*
+__pycache__/
+*.pyc
+*.pyo
+frontend/
+*.md
+.git/
+.gitignore
+image.png
