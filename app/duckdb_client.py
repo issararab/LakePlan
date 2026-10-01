@@ -12,13 +12,22 @@ _schema_context: str | None = None
 
 
 def _get_connection() -> duckdb.DuckDBPyConnection:
-    """Return the module-level read-only DuckDB connection, creating it on first call."""
+    """Return the module-level read-only DuckDB connection, creating it on first call.
+
+    External access is disabled so LLM-generated SQL cannot read files or URLs
+    (read_csv, read_text, glob, ...), and the configuration is locked so a query
+    cannot re-enable it.
+    """
     global _connection
     if _connection is None:
         db_path = os.environ.get("DUCKDB_PATH", "data/pricing.duckdb")
         if not os.path.exists(db_path):
             raise FileNotFoundError(f"DuckDB database not found: {db_path}")
-        _connection = duckdb.connect(db_path, read_only=True)
+        _connection = duckdb.connect(
+            db_path,
+            read_only=True,
+            config={"enable_external_access": False, "lock_configuration": True},
+        )
     return _connection
 
 
