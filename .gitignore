@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Node
+frontend/node_modules/
+
+# Build artifacts are intentionally committed (app/static/)
+
+# Internal dev notes
+SESSION_CONTEXT.md
