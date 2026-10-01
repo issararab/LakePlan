@@ -112,6 +112,10 @@ Notable `CollectedContext` fields:
 
 Only `SELECT` is allowed. Blocked at two levels: keyword scan (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `CREATE`, `ALTER`, `COPY`, `ATTACH`, `INSTALL`, `LOAD`, `TRUNCATE`, `PRAGMA`, `EXPORT`) and SQLGlot AST node check. A `LIMIT` clause is auto-injected (capped at 100) if absent or above the cap.
 
+Every table a query reads must be one of the six pricing tables in `_ALLOWED_TABLES` (with or without the `main.` prefix) or a CTE defined in the same query. Table functions (`read_csv`, `read_text`, `glob`, `query`, `duckdb_settings`, ...), file paths in `FROM`, and `information_schema` are rejected. **When you add a table to the DuckDB file, add it to `_ALLOWED_TABLES` too.**
+
+As a second layer, `duckdb_client.py` opens the connection with `enable_external_access=false` and `lock_configuration=true`, so file and URL reads fail inside DuckDB even if a query got past the validator. Regression tests are in `tests/test_sql_safety.py` (`python -m pytest tests`).
+
 ## Environment variables
 
 | Variable | Purpose |
