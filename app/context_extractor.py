@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from app import debug_collector
 from app.llm import LLMProvider
 from app.prompts import CONTEXT_COLLECTION_PROMPT, PATH_CONTEXTS
-from app.utils import extract_json, format_history
+from app.utils import as_text, extract_json, format_history
 
 if TYPE_CHECKING:
     from app.schemas import CollectedContext
@@ -71,7 +71,7 @@ def extract_context_updates(
 
     action = parsed.get("action", "ask")
     extracted = parsed.get("extracted", {})
-    questions = parsed.get("questions", "")
+    questions = as_text(parsed.get("questions", ""))
 
     # Sanitise extracted: remove null values and protect fields set from the API
     _PROTECTED = {"path_id", "path_label", "initial_description",

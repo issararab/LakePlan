@@ -50,11 +50,11 @@
   <text x="844" y="165" text-anchor="middle" font-size="11.5" font-weight="700" fill="white">LLM Provider</text>
   <!-- body -->
   <text x="844" y="193" text-anchor="middle" font-size="9.5" fill="#fca5a5">app/llm.py  ·  LLMProvider ABC</text>
-  <text x="844" y="209" text-anchor="middle" font-size="9.5" fill="#fca5a5">Databricks (OpenAI-compatible)</text>
-  <text x="844" y="225" text-anchor="middle" font-size="9.5" fill="#fca5a5">Anthropic API</text>
-  <text x="844" y="247" text-anchor="middle" font-size="8.5" fill="#6b7280">LLM_PROVIDER = databricks | anthropic</text>
-  <text x="844" y="262" text-anchor="middle" font-size="8.5" fill="#6b7280">DATABRICKS_LLM_ENDPOINT</text>
-  <text x="844" y="276" text-anchor="middle" font-size="8.5" fill="#6b7280">ANTHROPIC_API_KEY / ANTHROPIC_MODEL</text>
+  <text x="844" y="207" text-anchor="middle" font-size="9.5" fill="#fca5a5">Databricks (OpenAI-compatible)</text>
+  <text x="844" y="221" text-anchor="middle" font-size="9.5" fill="#fca5a5">Anthropic API</text>
+  <text x="844" y="235" text-anchor="middle" font-size="9.5" font-weight="600" fill="#fde68a">Open-weight: Ollama · vLLM</text>
+  <text x="844" y="256" text-anchor="middle" font-size="8.5" fill="#9ca3af">LLM_PROVIDER = databricks | anthropic</text>
+  <text x="844" y="270" text-anchor="middle" font-size="8.5" fill="#9ca3af">| openai_compatible</text>
 
   <!-- FastAPI ↔ LLM Provider (dashed red) -->
   <line x1="590" y1="162" x2="748" y2="180" stroke="#f87171" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrr)"/>
