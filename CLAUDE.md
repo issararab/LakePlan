@@ -56,12 +56,25 @@ print(execute_query(\"SELECT tier, price_usd FROM main.azure_web_storage_rates_g
 
 ## Architecture
 
-The request pipeline in `app/agent.py` has four stages:
+A session is handled by five agents in `app/agents/` that pass work to each other. `PricingAgent` in `app/agent.py` coordinates them.
 
-1. **Intent check** — the LLM decides if it needs follow-up questions. If yes, return early with no SQL.
-2. **SQL generation + validation** — `sql_generator.py` asks the LLM for a DuckDB SELECT (schema context embedded in the prompt), extracts SQL from the response, then `sql_validator.py` parses it with SQLGlot. On failure, one repair retry feeds the error back to the LLM.
-3. **Execution** — `duckdb_client.py` opens the DB `read_only=True` and fetches ≤ `MAX_ROWS` rows.
-4. **Summarization** — the LLM receives the question + SQL + rows and produces a grounded pricing answer.
+| Agent | Module | Job | Hands off to |
+|---|---|---|---|
+| `intake` | `agents/intake.py` | Context extraction + completeness check | `architect` when requirements are complete |
+| `architect` | `agents/architect.py` | Proposes/adjusts the architecture, runs the approval loop, writes the pricing brief | `planner` on approval; `intake` after 3 rejections in a row |
+| `planner` | `agents/planner.py` | Turns a pricing question into `QuerySpec`s; handles follow-ups | `sql_analyst`; `intake` when the customer changes the scenario |
+| `sql_analyst` | `agents/sql_analyst.py` | `sql_generator.py` → `sql_validator.py` (one repair retry) → `duckdb_client.py` (`read_only=True`, ≤ `MAX_ROWS` rows) | `synthesizer`, or replies "no data" if every lookup failed |
+| `synthesizer` | `agents/synthesizer.py` | Writes the answer strictly from the returned rows | never; always replies |
+
+How it works (`app/agents/base.py`):
+
+- `Agent.run(message, session, handoff)` returns either `Reply(ChatResponse)` or `Handoff(to, reason, payload)`. `handoff` is `None` when the agent is handling the customer's message directly.
+- The agent that replies holds the conversation. The coordinator stores its `phase`, and `_PHASE_OWNER` in `app/agent.py` sends the next message back to it. Agents don't set `phase` on their responses; the coordinator stamps `phase` and `agent`.
+- Agents are stateless. Conversation state lives in `Session` (`AgentState` + history), which the coordinator owns.
+- Each handoff is logged and added to Debug-mode steps as type `handoff`. `PricingAgent.last_trace` lists the agents that ran in the last turn. A turn stops after `_MAX_HANDOFFS_PER_TURN` (5) handoffs.
+- Each agent's docstring lists the payload keys it reads. The LLM-calling helpers (`context_extractor.py`, `architecture_generator.py`, `planner.py`, `sql_generator.py`) are the agents' tools and know nothing about handoffs.
+
+End-to-end tests in `tests/test_agent_flow.py` drive whole sessions with a scripted LLM (no credentials) and assert which agents ran in each turn.
 
 Sessions are per-tab (client generates a UUID stored in `sessionStorage`). The server keeps up to 200 concurrent sessions in memory.
 
@@ -98,7 +111,8 @@ ResetRequest(session_id: str)
 
 # Response
 QueryResult(name: str, sql: str, rows: list[dict])
-ChatResponse(answer: str, query_results: list[QueryResult])
+ChatResponse(answer: str, response_type: str, phase: str | None, agent: str | None,
+             query_results: list[QueryResult], debug_steps: list[dict])
 ```
 
 `context_extractor.py` protected fields: `path_id`, `path_label`, `initial_description`, `proposed_architecture`, `architecture_approved` are stripped from the LLM-returned extracted dict before merging. This prevents the LLM from overwriting API-set path labels.

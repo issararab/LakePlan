@@ -6,6 +6,7 @@ const STEP_META = {
   extraction: { color: '#0369a1', bg: '#e0f2fe', icon: '⬡' },
   rule:       { color: '#0d9488', bg: '#f0fdfa', icon: '⚙' },
   transition: { color: '#7c3aed', bg: '#faf5ff', icon: '→' },
+  handoff:    { color: '#be185d', bg: '#fdf2f8', icon: '⇄' },
   plan:       { color: '#b45309', bg: '#fffbeb', icon: '▤' },
   sql:        { color: '#15803d', bg: '#f0fdf4', icon: '⬡' },
   error:      { color: '#dc2626', bg: '#fef2f2', icon: '✗' },
