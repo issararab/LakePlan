@@ -32,13 +32,20 @@ The agent guides users through a structured flow:
 The image is public on GitHub Container Registry, so there's nothing to log in to. It's built for `linux/amd64` and `linux/arm64` (Apple silicon included).
 
 ```bash
-docker run --rm -p 8000:8000   -e DATABRICKS_TOKEN=<your_databricks_token>   ghcr.io/issararab/lakeplan:latest
+docker run --rm -p 8000:8000 \
+  -e DATABRICKS_TOKEN=<your_databricks_token> \
+  ghcr.io/issararab/lakeplan:latest
 ```
 
-Open http://localhost:8000. To use your own workspace or model endpoint, add:
+Open http://localhost:8000. To use your own workspace or model endpoint:
 
 ```bash
-  -e DATABRICKS_HOST=https://your-workspace.azuredatabricks.net   -e DATABRICKS_LLM_ENDPOINT=your-model-endpoint ```
+docker run --rm -p 8000:8000 \
+  -e DATABRICKS_TOKEN=<your_databricks_token> \
+  -e DATABRICKS_HOST=https://your-workspace.azuredatabricks.net \
+  -e DATABRICKS_LLM_ENDPOINT=your-model-endpoint \
+  ghcr.io/issararab/lakeplan:latest
+```
 
 | Tag | Points to |
 |---|---|
@@ -60,7 +67,8 @@ The Helm chart in [`deploy/helm/lakeplan`](deploy/helm/lakeplan) runs the publis
 
 ```bash
 kubectl create namespace lakeplan
-kubectl -n lakeplan create secret generic lakeplan-llm   --from-literal=DATABRICKS_TOKEN=<your_databricks_token>
+kubectl -n lakeplan create secret generic lakeplan-llm \
+  --from-literal=DATABRICKS_TOKEN=<your_databricks_token>
 
 helm install lakeplan deploy/helm/lakeplan -n lakeplan --set existingSecret=lakeplan-llm
 helm test lakeplan -n lakeplan
