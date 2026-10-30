@@ -1,0 +1,30 @@
+LakePlan is deploying as {{ include "lakeplan.fullname" . }} in namespace {{ .Release.Namespace }}.
+
+{{- $provider := .Values.config.LLM_PROVIDER | default "databricks" }}
+{{- $tokenVar := dict "databricks" "DATABRICKS_TOKEN" "anthropic" "ANTHROPIC_API_KEY" }}
+{{- if and (not (include "lakeplan.secretName" .)) (hasKey $tokenVar $provider) }}
+
+WARNING: no secret settings were given. The {{ $provider }} provider needs {{ get $tokenVar $provider }},
+so the pod will not start until it is set, e.g.:
+
+  kubectl -n {{ .Release.Namespace }} create secret generic lakeplan-llm --from-literal={{ get $tokenVar $provider }}=<token>
+  helm upgrade {{ .Release.Name }} <chart> -n {{ .Release.Namespace }} --reuse-values --set existingSecret=lakeplan-llm
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+Open:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+
+Open the UI:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "lakeplan.fullname" . }} 8000:{{ .Values.service.port }}
+  # then browse to http://localhost:8000
+{{- end }}
+
+Check it:
+
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}

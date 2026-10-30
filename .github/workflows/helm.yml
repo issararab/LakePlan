@@ -1,0 +1,53 @@
+# Lints the Helm chart, then installs it on a throwaway kind cluster and checks the app works.
+name: Helm chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/**
+      - Dockerfile
+      - requirements.txt
+      - app/**
+      - data/**
+      - .github/workflows/helm.yml
+  pull_request:
+    paths:
+      - deploy/**
+      - Dockerfile
+      - requirements.txt
+      - app/**
+      - data/**
+      - .github/workflows/helm.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+      - name: helm lint
+        run: helm lint deploy/helm/lakeplan --strict
+      - name: Render with each optional feature on
+        run: |
+          helm template lakeplan deploy/helm/lakeplan > /dev/null
+          helm template lakeplan deploy/helm/lakeplan \
+            --set existingSecret=llm-credentials \
+            --set ingress.enabled=true --set ingress.className=nginx \
+            --set replicaCount=2 > /dev/null
+
+  kind:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: lakeplan
+      - name: Install the chart on kind and check it
+        run: deploy/kind/smoke-test.sh

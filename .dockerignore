@@ -8,3 +8,7 @@ frontend/
 .git/
 .gitignore
 image.png
+.github/
+deploy/
+tests/
+compose*.yaml

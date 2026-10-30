@@ -1,0 +1,81 @@
+# Default values for the LakePlan chart.
+
+image:
+  repository: ghcr.io/issararab/lakeplan
+  # CI publishes `latest` and `sha-<commit>` from main. Pin a sha tag for reproducible deploys.
+  tag: latest
+  pullPolicy: Always
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# LakePlan keeps chat sessions in memory, so a conversation has to stay on one pod.
+# One replica is the safe default. With more, service.sessionAffinity keeps each
+# client on the same pod.
+replicaCount: 1
+
+# Plain settings, passed to the container as environment variables through a ConfigMap.
+# Anything left out falls back to the image defaults (Databricks provider).
+config:
+  LOG_LEVEL: INFO
+  # LLM_PROVIDER: databricks
+  # DATABRICKS_HOST: https://adb-1234567890.12.azuredatabricks.net
+  # DATABRICKS_LLM_ENDPOINT: my-model-endpoint
+  # MAX_ROWS: "100"
+
+# Secret settings. The chart stores these in a Secret and passes them as environment
+# variables. Prefer existingSecret outside of local testing, so tokens stay out of Helm values.
+secrets: {}
+  # DATABRICKS_TOKEN: dapi...
+  # ANTHROPIC_API_KEY: sk-ant-...
+
+# Name of a Secret you manage yourself (kubectl, External Secrets, Sealed Secrets...).
+# Every key in it becomes an environment variable. When set, `secrets` is ignored.
+existingSecret: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  # Keeps each client on the same pod when replicaCount > 1 (sessions are in memory).
+  sessionAffinity: ClientIP
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: lakeplan.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: lakeplan-tls
+  #    hosts:
+  #      - lakeplan.local
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

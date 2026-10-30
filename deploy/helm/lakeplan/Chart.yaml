@@ -1,0 +1,17 @@
+apiVersion: v2
+name: lakeplan
+description: LakePlan plans a Databricks architecture for your use case and estimates what it costs on Azure.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/issararab/LakePlan
+sources:
+  - https://github.com/issararab/LakePlan
+keywords:
+  - databricks
+  - pricing
+  - llm
+  - agents
+maintainers:
+  - name: issararab
+    url: https://github.com/issararab
