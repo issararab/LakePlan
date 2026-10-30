@@ -5,8 +5,10 @@ Run from the repo root:  python -m pytest tests
 
 import pytest
 
-import app.agent as agent_module
-from app.agent import _MAX_APPROVAL_REJECTIONS, PricingAgent
+import app.agents.architect as architect_module
+from app.agent import PricingAgent
+from app.agents import Reply
+from app.agents.architect import MAX_APPROVAL_REJECTIONS
 from app.llm import LLMProvider
 from app.schemas import AgentPhase, ChatResponse
 
@@ -26,20 +28,20 @@ def agent(monkeypatch):
     a._state.context = a._state.context.merge({"proposed_architecture": "original"})
 
     monkeypatch.setattr(
-        a, "_calculate_pricing",
-        lambda: ChatResponse(answer="PRICING", response_type="pricing", phase=AgentPhase.PRICING),
+        a._agents["planner"], "run",
+        lambda message, session, handoff: Reply(ChatResponse(answer="PRICING", response_type="pricing")),
     )
     monkeypatch.setattr(
-        agent_module, "adjust_architecture",
+        architect_module, "adjust_architecture",
         lambda original_architecture, user_feedback, context, llm: "adjusted",
     )
     return a
 
 
 def test_approval_after_rejection_limit_proceeds_to_pricing(agent):
-    for _ in range(_MAX_APPROVAL_REJECTIONS):
+    for _ in range(MAX_APPROVAL_REJECTIONS):
         assert agent.handle("No, change the ingestion").response_type == "architecture_proposal"
-    assert agent._state.consecutive_approval_rejections == _MAX_APPROVAL_REJECTIONS
+    assert agent._state.consecutive_approval_rejections == MAX_APPROVAL_REJECTIONS
 
     response = agent.handle("Yes, approve")
 
@@ -49,7 +51,7 @@ def test_approval_after_rejection_limit_proceeds_to_pricing(agent):
 
 
 def test_rejection_after_limit_resets_to_context_collection(agent):
-    agent._state.consecutive_approval_rejections = _MAX_APPROVAL_REJECTIONS
+    agent._state.consecutive_approval_rejections = MAX_APPROVAL_REJECTIONS
 
     response = agent.handle("No, change it again")
 
