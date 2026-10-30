@@ -222,6 +222,70 @@ Open http://localhost:8000
 
 > **Note**: `--reload` auto-restarts on file changes, which clears all in-memory sessions. Start without `--reload` for stable testing sessions.
 
+## 🦙 Run it on your own models
+
+LakePlan isn't tied to a hosted LLM. Set `LLM_PROVIDER=openai_compatible` and it talks to any server that speaks the OpenAI Chat Completions API, so the whole agent can run on Llama, Qwen, Mistral or Gemma on your own machine or GPU box. No cloud account needed, and no prompt or customer detail leaves your network.
+
+| `LLM_PROVIDER` | Backend | Settings |
+|---|---|---|
+| `databricks` *(default)* | Databricks model serving | `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_LLM_ENDPOINT` |
+| `anthropic` | Anthropic API | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` |
+| `openai_compatible` | Ollama · vLLM · LM Studio · llama.cpp · OpenAI | `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY` *(optional)* |
+
+### ⚡ One command: LakePlan + Ollama in Docker Compose
+
+```bash
+docker compose -f compose.ollama.yaml up --build
+```
+
+This starts Ollama, downloads `qwen2.5:7b` (4.7 GB, first run only), then starts LakePlan on http://localhost:8000. To pick another model, set `LAKEPLAN_MODEL`, for example `LAKEPLAN_MODEL=llama3.1:8b docker compose -f compose.ollama.yaml up --build`. The model weights live in a Docker volume, not in the LakePlan image, so switching models doesn't rebuild anything. GPU users can uncomment the `deploy:` block in [`compose.ollama.yaml`](compose.ollama.yaml).
+
+### 🖥️ Ollama installed on your machine
+
+```bash
+OLLAMA_CONTEXT_LENGTH=16384 ollama serve
+ollama pull qwen2.5:7b
+```
+
+```dotenv
+# .env
+LLM_PROVIDER=openai_compatible
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_MODEL=qwen2.5:7b
+```
+
+### 🚀 vLLM on a GPU server
+
+```bash
+vllm serve Qwen/Qwen2.5-7B-Instruct --port 8001 --max-model-len 32768
+```
+
+```dotenv
+LLM_PROVIDER=openai_compatible
+OPENAI_BASE_URL=http://<gpu-host>:8001/v1
+OPENAI_MODEL=Qwen/Qwen2.5-7B-Instruct
+```
+
+vLLM listens on port 8001 here because LakePlan already uses 8000. If you start vLLM with `--api-key`, set the same value in `OPENAI_API_KEY`.
+
+> [!IMPORTANT]
+> **Give the model at least a 16k-token context window.** The SQL-generation prompt carries the whole pricing schema (about 4,400 tokens), and the final answer prompt can pass 10k. Ollama sizes its default window from GPU memory. In testing on a 4 GB GPU it cut that SQL prompt down to 2,050 tokens **without returning an error**, which shows up as wrong SQL or broken JSON. Set `OLLAMA_CONTEXT_LENGTH=16384` (Compose does this for you). On vLLM, use `--max-model-len`.
+
+> [!TIP]
+> LakePlan cleans up the usual quirks of local models before parsing a reply: the `<think>…</think>` block from reasoning models such as DeepSeek-R1 and Qwen3, `//` comments inside JSON, and a list where a single text field was expected.
+
+### 🎯 Which model?
+
+LakePlan asks the model for strict JSON plans and DuckDB SQL against a six-table schema, so model size matters more than in a plain chatbot. Measured with Ollama 0.40 on a laptop GPU:
+
+| Model | Download | What happened |
+|---|---|---|
+| `qwen2.5:3b` | 1.9 GB | Full request flow works, but the SQL used columns that don't exist |
+| `qwen2.5:7b` | 4.7 GB | 1 of 3 test lookups returned the right price. Good for trying LakePlan out |
+
+For estimates you'll share, serve a larger model, for example Qwen 2.5 32B or Llama 3.3 70B on a vLLM GPU server.
+
+
 
 ## UI modes
 
