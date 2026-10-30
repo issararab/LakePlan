@@ -41,8 +41,11 @@ async def lifespan(_app: FastAPI):
         raise
 
     try:
-        get_llm_provider()
-        logger.info("LLM provider initialised (provider=%s)", os.environ.get("LLM_PROVIDER", "databricks"))
+        llm = get_llm_provider()
+        logger.info(
+            "LLM provider initialised (provider=%s, model=%s)",
+            os.environ.get("LLM_PROVIDER", "databricks"), llm.model,
+        )
     except Exception as exc:
         logger.error("Failed to initialise LLM provider: %s", exc)
         raise

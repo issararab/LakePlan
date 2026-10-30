@@ -1,4 +1,10 @@
-"""LLM provider abstraction. Swap Databricks ↔ Anthropic via LLM_PROVIDER env var."""
+"""LLM provider abstraction. Pick a backend with the LLM_PROVIDER env var.
+
+- databricks         Databricks model serving (default)
+- anthropic          Anthropic Messages API
+- openai_compatible  Any OpenAI-compatible server: self-hosted open-weight models
+                     (Ollama, vLLM, LM Studio, llama.cpp) or a hosted API
+"""
 
 import logging
 import os
@@ -8,9 +14,23 @@ from app import debug_collector
 
 logger = logging.getLogger(__name__)
 
+# Placeholder key for local servers that ignore auth. The OpenAI SDK refuses an empty key.
+_NO_API_KEY = "not-needed"
+
 
 def _truncate(text: str, n: int = 200) -> str:
     return text[:n] + "…" if len(text) > n else text
+
+
+def _strip_reasoning(text: str) -> str:
+    """Drop the <think>…</think> block that reasoning models (DeepSeek-R1, Qwen3) emit before the answer.
+
+    Callers parse replies as JSON or SQL, so leftover reasoning would break them.
+    Some servers drop the opening tag, so everything up to the last closing tag is removed.
+    """
+    if "</think>" in text:
+        return text.rsplit("</think>", 1)[1].lstrip()
+    return text
 
 
 class LLMProvider(ABC):
@@ -20,6 +40,8 @@ class LLMProvider(ABC):
     `complete` method so the rest of the codebase stays provider-agnostic.
     """
 
+    model: str = ""
+
     @abstractmethod
     def complete(self, messages: list[dict], system: str | None = None, step: str = "") -> str:
         """Send messages and return the assistant reply as a string.
@@ -28,26 +50,38 @@ class LLMProvider(ABC):
         """
 
 
-class DatabricksLLMProvider(LLMProvider):
-    """LLM provider backed by a Databricks model-serving endpoint.
+class OpenAICompatibleLLMProvider(LLMProvider):
+    """LLM provider for any server that implements the OpenAI Chat Completions API.
 
-    Uses the OpenAI-compatible REST API at the workspace's /serving-endpoints base URL.
+    This is how LakePlan runs on self-hosted open-weight models: point it at Ollama,
+    vLLM, LM Studio or a llama.cpp server. It also works with OpenAI itself.
 
     Attributes:
-        model: The serving endpoint name (from DATABRICKS_LLM_ENDPOINT env var).
+        base_url: API root including the version path, e.g. 'http://localhost:11434/v1'.
+            None means the OpenAI SDK default (api.openai.com).
+        model: Model name as the server knows it, e.g. 'qwen2.5:7b' on Ollama.
     """
 
-    def __init__(self) -> None:
-        """Reads DATABRICKS_HOST, DATABRICKS_TOKEN, and DATABRICKS_LLM_ENDPOINT from env."""
-        host = os.environ["DATABRICKS_HOST"].rstrip("/")
-        token = os.environ["DATABRICKS_TOKEN"]
-        self.model = os.environ["DATABRICKS_LLM_ENDPOINT"]
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        """Reads OPENAI_BASE_URL, OPENAI_API_KEY and OPENAI_MODEL from env for any argument not passed."""
+        if model is None:
+            model = os.environ.get("OPENAI_MODEL", "")
+            if not model:
+                raise ValueError("OPENAI_MODEL must be set when LLM_PROVIDER=openai_compatible")
+        if base_url is None:
+            base_url = os.environ.get("OPENAI_BASE_URL") or None
+        if api_key is None:
+            api_key = os.environ.get("OPENAI_API_KEY") or _NO_API_KEY
+        self.model = model
+        self.base_url = base_url
 
         from openai import OpenAI
-        self._client = OpenAI(
-            base_url=f"{host}/serving-endpoints",
-            api_key=token,
-        )
+        self._client = OpenAI(base_url=base_url, api_key=api_key)
 
     def complete(self, messages: list[dict], system: str | None = None, step: str = "") -> str:
         """See base class."""
@@ -60,9 +94,29 @@ class DatabricksLLMProvider(LLMProvider):
             model=self.model,
             messages=full_messages,
         )
-        reply = response.choices[0].message.content or ""
+        reply = _strip_reasoning(response.choices[0].message.content or "")
         logger.debug("[%s] LLM reply: %s", step or "llm", _truncate(reply, 300))
         return reply
+
+
+class DatabricksLLMProvider(OpenAICompatibleLLMProvider):
+    """LLM provider backed by a Databricks model-serving endpoint.
+
+    Databricks serves an OpenAI-compatible API at the workspace's /serving-endpoints path,
+    so this is the OpenAI-compatible provider with Databricks settings.
+
+    Attributes:
+        model: The serving endpoint name (from DATABRICKS_LLM_ENDPOINT env var).
+    """
+
+    def __init__(self) -> None:
+        """Reads DATABRICKS_HOST, DATABRICKS_TOKEN, and DATABRICKS_LLM_ENDPOINT from env."""
+        host = os.environ["DATABRICKS_HOST"].rstrip("/")
+        super().__init__(
+            base_url=f"{host}/serving-endpoints",
+            api_key=os.environ["DATABRICKS_TOKEN"],
+            model=os.environ["DATABRICKS_LLM_ENDPOINT"],
+        )
 
 
 class AnthropicLLMProvider(LLMProvider):
@@ -108,10 +162,16 @@ def _log_llm_call(step: str, messages: list[dict], system: str | None) -> None:
     )
 
 
+_PROVIDERS: dict[str, type[LLMProvider]] = {
+    "databricks": DatabricksLLMProvider,
+    "anthropic": AnthropicLLMProvider,
+    "openai_compatible": OpenAICompatibleLLMProvider,
+}
+
+
 def get_llm_provider() -> LLMProvider:
+    """Build the provider named by LLM_PROVIDER (default 'databricks')."""
     provider = os.environ.get("LLM_PROVIDER", "databricks").lower()
-    if provider == "anthropic":
-        return AnthropicLLMProvider()
-    if provider == "databricks":
-        return DatabricksLLMProvider()
-    raise ValueError(f"Unknown LLM_PROVIDER: {provider!r}. Use 'databricks' or 'anthropic'.")
+    if provider not in _PROVIDERS:
+        raise ValueError(f"Unknown LLM_PROVIDER: {provider!r}. Use one of: {', '.join(_PROVIDERS)}.")
+    return _PROVIDERS[provider]()
