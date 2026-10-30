@@ -67,7 +67,17 @@ Sessions are per-tab (client generates a UUID stored in `sessionStorage`). The s
 
 ## LLM abstraction
 
-`app/llm.py` exposes a single `LLMProvider` ABC with one method: `complete(messages, system)`. Two implementations exist: `DatabricksLLMProvider` (OpenAI-compatible endpoint) and `AnthropicLLMProvider`. The factory `get_llm_provider()` reads the `LLM_PROVIDER` env var (`databricks` default, `anthropic` to switch). The rest of the code only ever calls `llm.complete()`.
+`app/llm.py` exposes a single `LLMProvider` ABC with one method: `complete(messages, system)`. Three implementations exist:
+
+- `OpenAICompatibleLLMProvider` — any OpenAI Chat Completions server. This is how LakePlan runs on self-hosted open-weight models (Ollama, vLLM, LM Studio, llama.cpp). Reads `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY` (optional; local servers usually ignore it).
+- `DatabricksLLMProvider` — a subclass of the above with `base_url = $DATABRICKS_HOST/serving-endpoints`.
+- `AnthropicLLMProvider` — Anthropic Messages API.
+
+The factory `get_llm_provider()` reads the `LLM_PROVIDER` env var (`databricks` default, `anthropic`, or `openai_compatible`). The rest of the code only ever calls `llm.complete()`.
+
+OpenAI-compatible replies go through `_strip_reasoning`, which drops a `<think>…</think>` block from reasoning models before callers parse JSON or SQL. Local servers need a context window of at least 16k tokens: the SQL-generation prompt alone is about 5k, and Ollama silently truncates prompts that don't fit. `compose.ollama.yaml` runs LakePlan with Ollama and sets `OLLAMA_CONTEXT_LENGTH` for you.
+
+Smaller models don't always return the JSON shape a prompt asks for. For example, qwen2.5:7b returns `"questions"` as a list. Some also put `//` comments in JSON. `app.utils.extract_json` strips those comments (outside strings), and text fields from LLM JSON should go through `app.utils.as_text`, which turns a list into bullet lines.
 
 ## DuckDB schema — critical gotchas
 
@@ -120,12 +130,15 @@ As a second layer, `duckdb_client.py` opens the connection with `enable_external
 
 | Variable | Purpose |
 |---|---|
-| `LLM_PROVIDER` | `databricks` (default) or `anthropic` |
+| `LLM_PROVIDER` | `databricks` (default), `anthropic`, or `openai_compatible` |
 | `DATABRICKS_HOST` | Workspace URL |
 | `DATABRICKS_TOKEN` | PAT |
 | `DATABRICKS_LLM_ENDPOINT` | Model serving endpoint name |
 | `ANTHROPIC_API_KEY` | Required when `LLM_PROVIDER=anthropic` |
 | `ANTHROPIC_MODEL` | Defaults to `claude-opus-4-5` |
+| `OPENAI_BASE_URL` | OpenAI-compatible API root, e.g. `http://localhost:11434/v1` (Ollama). Used when `LLM_PROVIDER=openai_compatible` |
+| `OPENAI_MODEL` | Model name as the server knows it, e.g. `qwen2.5:7b`. Required for `openai_compatible` |
+| `OPENAI_API_KEY` | Optional. Only needed if the server checks a key |
 | `DUCKDB_PATH` | Defaults to `data/pricing.duckdb` |
 | `MAX_ROWS` | Defaults to `100` |
 | `LOG_LEVEL` | Defaults to `INFO`; set to `DEBUG` for full prompt logging |

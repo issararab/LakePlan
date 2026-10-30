@@ -11,7 +11,7 @@ from typing import Literal
 from app import debug_collector
 from app.llm import LLMProvider
 from app.prompts import PLANNING_PROMPT
-from app.utils import extract_json, format_history
+from app.utils import as_text, extract_json, format_history
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ def _parse_plan(text: str) -> Plan:
 
     action = data.get("action")
     if action == "ask":
-        return Plan(action="ask", questions=str(data.get("questions", "")))
+        return Plan(action="ask", questions=as_text(data.get("questions", "")))
     if action == "query":
         specs = [
             QuerySpec(name=q["name"], description=q["description"])

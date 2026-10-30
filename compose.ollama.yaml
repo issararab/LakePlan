@@ -1,0 +1,58 @@
+# LakePlan with a local model served by Ollama. No cloud account or API key needed.
+#
+#   docker compose -f compose.ollama.yaml up --build
+#
+# The first start downloads the model (4.7 GB for the default qwen2.5:7b), then
+# LakePlan is at http://localhost:8000. Pick another model with LAKEPLAN_MODEL:
+#
+#   LAKEPLAN_MODEL=llama3.1:8b docker compose -f compose.ollama.yaml up --build
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.13
+    environment:
+      # LakePlan's prompts reach 10k+ tokens. Ollama silently cuts prompts that
+      # exceed its context window, which breaks the JSON and SQL the agent parses.
+      OLLAMA_CONTEXT_LENGTH: "16384"
+      OLLAMA_KEEP_ALIVE: "30m"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    # Runs on CPU by default. For an NVIDIA GPU (Docker Desktop with WSL2, or Linux
+    # with the NVIDIA Container Toolkit), uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # One-shot job: pull the model into the shared volume, then exit.
+  pull-model:
+    image: ollama/ollama:0.40.13
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "${LAKEPLAN_MODEL:-qwen2.5:7b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  lakeplan:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      LLM_PROVIDER: openai_compatible
+      OPENAI_BASE_URL: http://ollama:11434/v1
+      OPENAI_MODEL: ${LAKEPLAN_MODEL:-qwen2.5:7b}
+    depends_on:
+      pull-model:
+        condition: service_completed_successfully
+
+volumes:
+  ollama-models:
