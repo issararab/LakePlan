@@ -11,7 +11,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from typing import Literal
 
-StepType = Literal["phase", "llm", "extraction", "rule", "transition", "plan", "sql", "error"]
+StepType = Literal["phase", "llm", "extraction", "rule", "transition", "handoff", "plan", "sql", "error"]
 
 _collector: ContextVar[list[dict] | None] = ContextVar("debug_collector", default=None)
 

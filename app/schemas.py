@@ -126,7 +126,7 @@ class AgentState:
         phase: Current phase in the agent workflow.
         context: All structured information collected from the conversation.
         consecutive_approval_rejections: Number of consecutive architecture rejections;
-            resets to context collection at _MAX_APPROVAL_REJECTIONS.
+            hands back to intake at MAX_APPROVAL_REJECTIONS.
         mode: Session rendering mode ('user' or 'debug'), locked on the first message.
     """
 
@@ -189,13 +189,17 @@ class ChatResponse(BaseModel):
         answer: The agent's text response.
         response_type: Content category ('message', 'architecture_proposal', or 'pricing').
         phase: Current agent phase after processing the request.
+        agent: Name of the agent that wrote the answer ('intake', 'architect', 'planner',
+            'sql_analyst' or 'synthesizer').
         query_results: SQL queries and rows used to produce the answer; non-empty for
             pricing responses.
-        debug_steps: Ordered pipeline steps; populated only when mode is 'debug'.
+        debug_steps: Ordered pipeline steps, including handoffs between agents;
+            populated only when mode is 'debug'.
     """
 
     answer: str
     response_type: str = "message"   # message | architecture_proposal | pricing
     phase: str | None = None
+    agent: str | None = None
     query_results: list[QueryResult] = []
     debug_steps: list[dict] = []     # populated only when mode == "debug"

@@ -65,9 +65,9 @@
   <text x="755" y="266" font-size="8" fill="#f87171">agent</text>
   <text x="755" y="277" font-size="8" fill="#f87171">calls</text>
 
-  <!-- ═══ AGENT STATE MACHINE CONTAINER ═══ -->
+  <!-- ═══ AGENT TEAM CONTAINER ═══ -->
   <rect x="20" y="222" width="714" height="298" rx="12" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6,4"/>
-  <text x="377" y="240" text-anchor="middle" font-size="10.5" font-weight="600" fill="#475569">Agent State Machine (app/agent.py)</text>
+  <text x="377" y="240" text-anchor="middle" font-size="10.5" font-weight="600" fill="#475569">Agent team · app/agents/ (coordinated by app/agent.py)</text>
 
   <!-- ─── Phase 1: Context Collection ─── -->
   <rect x="34" y="248" width="158" height="110" rx="8" fill="white" stroke="#3b82f6" stroke-width="2"/>
@@ -77,7 +77,7 @@
   <text x="113" y="292" text-anchor="middle" font-size="8.5" fill="#1d4ed8">LLM extracts structured</text>
   <text x="113" y="305" text-anchor="middle" font-size="8.5" fill="#1d4ed8">fields from conversation</text>
   <text x="113" y="318" text-anchor="middle" font-size="8.5" fill="#1d4ed8">completeness check</text>
-  <text x="113" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">context_extractor.py · schemas.py</text>
+  <text x="113" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">IntakeAgent · agents/intake.py</text>
 
   <line x1="192" y1="303" x2="208" y2="303" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrs)"/>
 
@@ -89,7 +89,7 @@
   <text x="287" y="292" text-anchor="middle" font-size="8.5" fill="#166534">Rule engine → ingestion</text>
   <text x="287" y="305" text-anchor="middle" font-size="8.5" fill="#166534">compute + serving recs</text>
   <text x="287" y="318" text-anchor="middle" font-size="8.5" fill="#166534">LLM generates diagram</text>
-  <text x="287" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">rules.py · architecture_generator.py</text>
+  <text x="287" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">ArchitectAgent · rules.py</text>
 
   <line x1="366" y1="303" x2="382" y2="303" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrs)"/>
 
@@ -98,10 +98,10 @@
   <rect x="382" y="248" width="158" height="28" rx="8" fill="#ea580c"/>
   <rect x="382" y="264" width="158" height="12" fill="#ea580c"/>
   <text x="461" y="267" text-anchor="middle" font-size="10" font-weight="700" fill="white">③ Arch. Approval</text>
-  <text x="461" y="292" text-anchor="middle" font-size="8.5" fill="#9a3412">User approves or</text>
-  <text x="461" y="305" text-anchor="middle" font-size="8.5" fill="#9a3412">requests changes</text>
-  <text x="461" y="318" text-anchor="middle" font-size="8.5" fill="#9a3412">loop (≤ 3 rejections)</text>
-  <text x="461" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">architecture_generator.py</text>
+  <text x="461" y="292" text-anchor="middle" font-size="8.5" fill="#9a3412">User approves → planner</text>
+  <text x="461" y="305" text-anchor="middle" font-size="8.5" fill="#9a3412">or requests changes</text>
+  <text x="461" y="318" text-anchor="middle" font-size="8.5" fill="#9a3412">3 rejections → intake</text>
+  <text x="461" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">ArchitectAgent · agents/architect.py</text>
 
   <line x1="540" y1="303" x2="556" y2="303" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrs)"/>
 
@@ -109,21 +109,21 @@
   <rect x="556" y="248" width="162" height="110" rx="8" fill="white" stroke="#a855f7" stroke-width="2"/>
   <rect x="556" y="248" width="162" height="28" rx="8" fill="#9333ea"/>
   <rect x="556" y="264" width="162" height="12" fill="#9333ea"/>
-  <text x="637" y="267" text-anchor="middle" font-size="10" font-weight="700" fill="white">④ Pricing Pipeline</text>
-  <text x="637" y="292" text-anchor="middle" font-size="8.5" fill="#6b21a8">Planner → QuerySpec</text>
-  <text x="637" y="305" text-anchor="middle" font-size="8.5" fill="#6b21a8">SQL Generator → DuckDB</text>
-  <text x="637" y="318" text-anchor="middle" font-size="8.5" fill="#6b21a8">Validator → Synthesis</text>
-  <text x="637" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">planner.py · sql_generator.py</text>
+  <text x="637" y="267" text-anchor="middle" font-size="10" font-weight="700" fill="white">④ Pricing Agents</text>
+  <text x="637" y="292" text-anchor="middle" font-size="8.5" fill="#6b21a8">PlannerAgent → lookups</text>
+  <text x="637" y="305" text-anchor="middle" font-size="8.5" fill="#6b21a8">SQLAnalystAgent → DuckDB</text>
+  <text x="637" y="318" text-anchor="middle" font-size="8.5" fill="#6b21a8">SynthesizerAgent → answer</text>
+  <text x="637" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">planner · sql_analyst · synthesizer</text>
 
   <!-- ─── Pricing Pipeline Detail Row ─── -->
   <rect x="34" y="370" width="692" height="132" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
-  <text x="380" y="387" text-anchor="middle" font-size="9" font-weight="600" fill="#64748b">Pricing Pipeline — Step Detail</text>
+  <text x="380" y="387" text-anchor="middle" font-size="9" font-weight="600" fill="#64748b">Pricing agents — step detail</text>
 
   <!-- Sub-box 1: Planner -->
   <rect x="44" y="394" width="116" height="96" rx="6" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
   <rect x="44" y="394" width="116" height="24" rx="6" fill="#9333ea"/>
   <rect x="44" y="406" width="116" height="12" fill="#9333ea"/>
-  <text x="102" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">Planner</text>
+  <text x="102" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">PlannerAgent</text>
   <text x="102" y="432" text-anchor="middle" font-size="8.5" fill="#7e22ce">LLM decision:</text>
   <text x="102" y="445" text-anchor="middle" font-size="8.5" fill="#7e22ce">ask | query</text>
   <text x="102" y="458" text-anchor="middle" font-size="8.5" fill="#7e22ce">→ QuerySpec list</text>
@@ -135,7 +135,7 @@
   <rect x="170" y="394" width="116" height="96" rx="6" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
   <rect x="170" y="394" width="116" height="24" rx="6" fill="#9333ea"/>
   <rect x="170" y="406" width="116" height="12" fill="#9333ea"/>
-  <text x="228" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">SQL Generator</text>
+  <text x="228" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">SQLAnalystAgent</text>
   <text x="228" y="432" text-anchor="middle" font-size="8.5" fill="#7e22ce">LLM → SELECT</text>
   <text x="228" y="445" text-anchor="middle" font-size="8.5" fill="#7e22ce">extract from resp</text>
   <text x="228" y="458" text-anchor="middle" font-size="8.5" fill="#7e22ce">1 repair retry</text>
@@ -162,7 +162,7 @@
   <text x="480" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">DuckDB Exec</text>
   <text x="480" y="432" text-anchor="middle" font-size="8.5" fill="#92400e">read_only = True</text>
   <text x="480" y="445" text-anchor="middle" font-size="8.5" fill="#92400e">≤ 100 rows / query</text>
-  <text x="480" y="458" text-anchor="middle" font-size="8.5" fill="#92400e">3 tables · Azure DE</text>
+  <text x="480" y="458" text-anchor="middle" font-size="8.5" fill="#92400e">6 tables · Azure DE</text>
   <text x="480" y="474" text-anchor="middle" font-size="7.5" fill="#94a3b8">duckdb_client.py</text>
 
   <line x1="538" y1="442" x2="548" y2="442" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrs)"/>
@@ -171,7 +171,7 @@
   <rect x="548" y="394" width="168" height="96" rx="6" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
   <rect x="548" y="394" width="168" height="24" rx="6" fill="#9333ea"/>
   <rect x="548" y="406" width="168" height="12" fill="#9333ea"/>
-  <text x="632" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">Synthesis LLM</text>
+  <text x="632" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">SynthesizerAgent</text>
   <text x="632" y="432" text-anchor="middle" font-size="8.5" fill="#6b21a8">question + SQL + rows</text>
   <text x="632" y="445" text-anchor="middle" font-size="8.5" fill="#6b21a8">→ grounded cost estimate</text>
   <text x="632" y="458" text-anchor="middle" font-size="8.5" fill="#6b21a8">never invents prices</text>
