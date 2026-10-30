@@ -1,5 +1,15 @@
 # LakePlan
 
+[![Container image](https://github.com/issararab/LakePlan/actions/workflows/container-image.yml/badge.svg)](https://github.com/issararab/LakePlan/actions/workflows/container-image.yml)
+[![Helm chart](https://github.com/issararab/LakePlan/actions/workflows/helm.yml/badge.svg)](https://github.com/issararab/LakePlan/actions/workflows/helm.yml)
+[![ghcr.io/issararab/lakeplan](https://img.shields.io/badge/ghcr.io-issararab%2Flakeplan-2496ED?logo=docker&logoColor=white)](https://github.com/issararab/LakePlan/pkgs/container/lakeplan)
+[![Helm](https://img.shields.io/badge/Helm-chart-0F1689?logo=helm&logoColor=white)](deploy/helm/lakeplan)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-tested%20on%20kind-326CE5?logo=kubernetes&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
+![DuckDB](https://img.shields.io/badge/DuckDB-FFF000?logo=duckdb&logoColor=black)
+
 **A Databricks architecture planning and cost estimation agent.**
 
 LakePlan proposes a Databricks solution architecture for your use case, then estimates what it will cost on Azure Germany West Central. Implemented as a FastAPI backend with a React + Vite frontend.
@@ -96,60 +106,81 @@ The API response says which agent answered (`"agent": "synthesizer"`), and in De
 
 ![System Architecture](docs/architecture.svg)
 
-## Running with Docker (recommended)
+## 🐳 Run it with Docker
 
-The easiest way to run the agent — no Python or npm required.
-
-### Prerequisites
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
-- A Databricks personal access token
-
-### Pull and run
-
-**Step 1 — Authenticate with GitHub Container Registry**
-
-You need a GitHub personal access token with `read:packages` scope:
-1. Go to **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)**
-2. Generate new token → check **`read:packages`** and **`repo`**
-3. Copy the token and login:
+The image is public on GitHub Container Registry, so there's nothing to log in to. It's built for `linux/amd64` and `linux/arm64` (Apple silicon included).
 
 ```bash
-echo YOUR_GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
-```
-
-**Step 2 — Pull and run**
-
-```bash
-docker pull ghcr.io/ruhragency/databricks-pricing-agent:latest
-```
-
-**Option A** — use pre-configured workspace and model:
-
-```bash
-docker run -p 8000:8000 \
+docker run --rm -p 8000:8000 \
   -e DATABRICKS_TOKEN=<your_databricks_token> \
-  ghcr.io/ruhragency/databricks-pricing-agent:latest
+  ghcr.io/issararab/lakeplan:latest
 ```
 
-**Option B** — override the workspace or model:
+Open http://localhost:8000. To use your own workspace or model endpoint:
 
 ```bash
-docker run -p 8000:8000 \
+docker run --rm -p 8000:8000 \
   -e DATABRICKS_TOKEN=<your_databricks_token> \
   -e DATABRICKS_HOST=https://your-workspace.azuredatabricks.net \
   -e DATABRICKS_LLM_ENDPOINT=your-model-endpoint \
-  ghcr.io/ruhragency/databricks-pricing-agent:latest
+  ghcr.io/issararab/lakeplan:latest
 ```
 
-Open http://localhost:8000
+| Tag | Points to |
+|---|---|
+| `latest` | The newest build of `main` |
+| `sha-<commit>` | One exact commit. Pin this for repeatable deploys |
+| `1.2.3`, `1.2` | Release tags (pushed from git tags `v1.2.3`) |
 
-### Stop the container
+The container runs as a non-root user (UID 10001) and has a built-in health check. [`container-image.yml`](.github/workflows/container-image.yml) rebuilds and publishes it on every push to `main`, and builds it (without publishing) on pull requests.
+
+## ☸️ Deploy on Kubernetes
+
+The Helm chart in [`deploy/helm/lakeplan`](deploy/helm/lakeplan) runs the published image with production defaults:
+
+- 🔒 non-root user, read-only root filesystem, all Linux capabilities dropped, `RuntimeDefault` seccomp
+- 🩺 startup, readiness and liveness probes on `/health`
+- 🔑 LLM credentials from a Secret (yours, or one the chart creates)
+- 🔁 pods restart automatically when settings change (config checksums)
+- 🧪 a `helm test` hook that checks the API and the web UI from inside the cluster
 
 ```bash
-docker ps                          # find the container ID
-docker stop <container_id>
+kubectl create namespace lakeplan
+kubectl -n lakeplan create secret generic lakeplan-llm \
+  --from-literal=DATABRICKS_TOKEN=<your_databricks_token>
+
+helm install lakeplan deploy/helm/lakeplan -n lakeplan --set existingSecret=lakeplan-llm
+helm test lakeplan -n lakeplan
+
+kubectl -n lakeplan port-forward svc/lakeplan 8000:80   # then open http://localhost:8000
 ```
+
+<details>
+<summary><b>Chart values</b></summary>
+
+| Value | Default | What it does |
+|---|---|---|
+| `image.repository` | `ghcr.io/issararab/lakeplan` | |
+| `image.tag` | `latest` | Pin a `sha-<commit>` tag for repeatable deploys |
+| `config` | `{LOG_LEVEL: INFO}` | Plain environment variables (ConfigMap), e.g. `LLM_PROVIDER`, `DATABRICKS_HOST`, `DATABRICKS_LLM_ENDPOINT` |
+| `existingSecret` | `""` | A Secret you manage. Every key becomes an environment variable |
+| `secrets` | `{}` | Or let the chart create the Secret (fine for local testing) |
+| `ingress.enabled` | `false` | Expose LakePlan through your ingress controller (`ingress.className`, `ingress.hosts`, `ingress.tls`) |
+| `replicaCount` | `1` | Chat sessions live in memory, so extra replicas rely on `service.sessionAffinity: ClientIP` to keep each user on one pod |
+| `resources` | 100m CPU / 256Mi requested, 1Gi limit | |
+
+</details>
+
+### 🧪 Try it locally on kind
+
+[`deploy/kind/smoke-test.sh`](deploy/kind/smoke-test.sh) builds the image, loads it into a [kind](https://kind.sigs.k8s.io/) cluster, installs the chart and checks it. No LLM credentials needed.
+
+```bash
+deploy/kind/smoke-test.sh                    # needs docker, kind, kubectl and helm
+DELETE_CLUSTER=1 deploy/kind/smoke-test.sh   # same, then delete the cluster
+```
+
+It checks that the rollout finishes, `helm test` passes, the pod runs as UID 10001 on a read-only filesystem, `/health`, the web UI and `/chat` input validation answer through a port-forward, and the pricing database loaded all six tables. [`helm.yml`](.github/workflows/helm.yml) runs `helm lint` and the same script on a fresh kind cluster for every pull request that touches the app, the Dockerfile or the chart.
 
 ---
 

@@ -1,0 +1,39 @@
+{{- $url := printf "http://%s:%v" (include "lakeplan.fullname" .) .Values.service.port }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "lakeplan.fullname" . }}-test-connection"
+  # Not the selector labels, so the Service never picks up this pod
+  labels:
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: helm-test
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: check
+      image: busybox:1.37
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      command: ["sh", "-c"]
+      args:
+        - |
+          set -e
+          echo "GET {{ $url }}/health"
+          wget -qO- {{ $url }}/health | grep -q '"status":"ok"'
+          echo "GET {{ $url }}/ (web UI)"
+          wget -qO- {{ $url }}/ | grep -q '<div id="root">'
+          echo "LakePlan is up"
