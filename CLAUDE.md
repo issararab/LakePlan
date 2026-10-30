@@ -133,3 +133,9 @@ As a second layer, `duckdb_client.py` opens the connection with `enable_external
 ## `create_pricing_agent.py`
 
 Kept for reference only — it is the original Databricks notebook export (uses `WorkspaceClient`, `dbutils`, MLflow, Genie MCP). It is not imported anywhere.
+
+## Container image and Kubernetes
+
+- **Image:** `ghcr.io/issararab/lakeplan`, public, `linux/amd64` + `linux/arm64`. `.github/workflows/container-image.yml` pushes `latest` and `sha-<commit>` on every push to `main`, semver tags on `v*` git tags, and only builds on PRs. The Dockerfile runs as UID 10001 and sets `PYTHONDONTWRITEBYTECODE=1` so the app works on a read-only root filesystem.
+- **Helm chart:** `deploy/helm/lakeplan`. Plain settings go in `config` (ConfigMap); secrets in `existingSecret` or `secrets`; both reach the container through `envFrom`. Keep `replicaCount: 1` unless sticky sessions are on: sessions are in memory per pod.
+- **Testing the chart:** `deploy/kind/smoke-test.sh` (needs docker, kind, kubectl, helm). `.github/workflows/helm.yml` runs `helm lint --strict` and the same script on kind for PRs. When you change the chart, run it locally first.
