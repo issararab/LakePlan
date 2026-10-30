@@ -1,11 +1,11 @@
-"""Tests for the keyword-based architecture approval check in app/agent.py.
+"""Tests for the keyword-based architecture approval check in app/agents/architect.py.
 
 Run from the repo root:  python -m pytest tests
 """
 
 import pytest
 
-from app.agent import _detect_approval
+from app.agents.architect import detect_approval
 
 
 @pytest.mark.parametrize("message", [
@@ -23,7 +23,7 @@ from app.agent import _detect_approval
     "yep",
 ])
 def test_approval(message):
-    assert _detect_approval(message) == "approve"
+    assert detect_approval(message) == "approve"
 
 
 @pytest.mark.parametrize("message", [
@@ -34,7 +34,7 @@ def test_approval(message):
     "Hold on, let me check with the team",
 ])
 def test_rejection(message):
-    assert _detect_approval(message) == "reject"
+    assert detect_approval(message) == "reject"
 
 
 @pytest.mark.parametrize("message", [
@@ -44,4 +44,4 @@ def test_rejection(message):
     "I disagree",
 ])
 def test_ambiguous_falls_through_to_llm(message):
-    assert _detect_approval(message) is None
+    assert detect_approval(message) is None
