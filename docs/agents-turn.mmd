@@ -1,0 +1,22 @@
+%% Source for docs/agents-turn.svg. Regenerate with:
+%%   npx -p @mermaid-js/mermaid-cli mmdc -i docs/agents-turn.mmd -o docs/agents-turn.svg -c docs/mermaid.json -b white
+sequenceDiagram
+    autonumber
+    actor C as Customer
+    participant O as Coordinator
+    participant A as Architect
+    participant P as Planner
+    participant S as SQL analyst
+    participant Y as Synthesizer
+
+    C->>O: "Yes, approve"
+    O->>A: message
+    A-->>O: Handoff → planner (brief)
+    O->>P: run(handoff)
+    P-->>O: Handoff → sql_analyst (lookups)
+    O->>S: run(handoff)
+    Note over S: write SQL → validate → run on DuckDB
+    S-->>O: Handoff → synthesizer (rows)
+    O->>Y: run(handoff)
+    Y-->>O: Reply (estimate)
+    O->>C: estimate (agent = synthesizer)
