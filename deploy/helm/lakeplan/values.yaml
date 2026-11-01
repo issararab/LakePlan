@@ -17,6 +17,7 @@ replicaCount: 1
 
 # Plain settings, passed to the container as environment variables through a ConfigMap.
 # Anything left out falls back to the image defaults (Databricks provider).
+# The Databricks provider needs DATABRICKS_HOST, your workspace URL.
 config:
   LOG_LEVEL: INFO
   # LLM_PROVIDER: databricks

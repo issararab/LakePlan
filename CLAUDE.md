@@ -80,15 +80,17 @@ Sessions are per-tab (client generates a UUID stored in `sessionStorage`). The s
 
 ## LLM abstraction
 
-`app/llm.py` exposes a single `LLMProvider` ABC with one method: `complete(messages, system)`. Three implementations exist:
+All LLM calls go through LangChain chat models. `app/llm.py` defines the `LLMProvider` interface with one method, `complete(messages, system, step)`, and one implementation, `ChatModelLLM`, which wraps any LangChain `BaseChatModel`. `get_llm_provider()` reads `LLM_PROVIDER` and builds the chat model:
 
-- `OpenAICompatibleLLMProvider` — any OpenAI Chat Completions server. This is how LakePlan runs on self-hosted open-weight models (Ollama, vLLM, LM Studio, llama.cpp). Reads `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY` (optional; local servers usually ignore it).
-- `DatabricksLLMProvider` — a subclass of the above with `base_url = $DATABRICKS_HOST/serving-endpoints`.
-- `AnthropicLLMProvider` — Anthropic Messages API.
+| `LLM_PROVIDER` | Chat model | Settings |
+|---|---|---|
+| `databricks` (default) | `ChatOpenAI` with `base_url = $DATABRICKS_HOST/serving-endpoints` | `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_LLM_ENDPOINT` |
+| `anthropic` | `ChatAnthropic` (`max_tokens=4096`) | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` |
+| `openai_compatible` | `ChatOpenAI` on any OpenAI Chat Completions server (Ollama, vLLM, LM Studio, llama.cpp, OpenAI) | `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY` (optional) |
 
-The factory `get_llm_provider()` reads the `LLM_PROVIDER` env var (`databricks` default, `anthropic`, or `openai_compatible`). The rest of the code only ever calls `llm.complete()`.
+To add a backend, add a builder function to `_PROVIDERS` that returns `(chat_model, model_name)`. The rest of the code only ever calls `llm.complete()`. Each call runs with its `step` label as the LangChain run name, so callbacks and LangSmith traces show `planner`, `sql-gen(attempt=1)` and so on. Tests swap in a scripted `LLMProvider` subclass, so they never need LangChain or credentials.
 
-OpenAI-compatible replies go through `_strip_reasoning`, which drops a `<think>…</think>` block from reasoning models before callers parse JSON or SQL. Local servers need a context window of at least 16k tokens: the SQL-generation prompt alone is about 5k, and Ollama silently truncates prompts that don't fit. `compose.ollama.yaml` runs LakePlan with Ollama and sets `OLLAMA_CONTEXT_LENGTH` for you.
+Replies go through `_strip_reasoning`, which drops a `<think>…</think>` block from reasoning models before callers parse JSON or SQL. Local servers need a context window of at least 16k tokens: the SQL-generation prompt alone is about 5k, and Ollama silently truncates prompts that don't fit. `compose.ollama.yaml` runs LakePlan with Ollama and sets `OLLAMA_CONTEXT_LENGTH` for you.
 
 Smaller models don't always return the JSON shape a prompt asks for. For example, qwen2.5:7b returns `"questions"` as a list. Some also put `//` comments in JSON. `app.utils.extract_json` strips those comments (outside strings), and text fields from LLM JSON should go through `app.utils.as_text`, which turns a list into bullet lines.
 
@@ -145,7 +147,7 @@ As a second layer, `duckdb_client.py` opens the connection with `enable_external
 | Variable | Purpose |
 |---|---|
 | `LLM_PROVIDER` | `databricks` (default), `anthropic`, or `openai_compatible` |
-| `DATABRICKS_HOST` | Workspace URL |
+| `DATABRICKS_HOST` | Workspace URL. Required when `LLM_PROVIDER=databricks`; the image has no default |
 | `DATABRICKS_TOKEN` | PAT |
 | `DATABRICKS_LLM_ENDPOINT` | Model serving endpoint name |
 | `ANTHROPIC_API_KEY` | Required when `LLM_PROVIDER=anthropic` |
