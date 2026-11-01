@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
-from app.agents.base import Agent, Handoff, Reply, Session
+from langgraph.runtime import Runtime
+from langgraph.types import Command
+
+from app.agents.state import LakePlanContext, LakePlanState, reply
 from app.prompts import SYSTEM_PROMPT, build_synthesis_prompt
-from app.schemas import AgentPhase, ChatResponse, QueryResult
+from app.schemas import ChatResponse, QueryResult
 
 
 def _rows_to_compact_json(rows: list[dict[str, Any]], max_chars: int = 6000) -> str:
@@ -27,36 +30,19 @@ def format_query_results(results: list[QueryResult]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-class SynthesizerAgent(Agent):
-    """Writes the customer-facing estimate, grounded only in the rows it was handed.
-
-    Always replies; never hands off.
-
-    Accepts handoffs with payload:
-        question: The pricing question.
-        followup: True for a customer follow-up (changes the LLM step label only).
-        query_results: The SQL analyst's QueryResults.
-    """
-
-    name = "synthesizer"
-    role = "Writes the cost estimate strictly from the rows the SQL analyst returned."
-    phase = AgentPhase.PRICING
-
-    def run(self, message: str, session: Session, handoff: Handoff | None) -> Handoff | Reply:
-        if handoff is None:
-            raise ValueError("The synthesizer only works on a handoff from the SQL analyst")
-
-        results: list[QueryResult] = handoff.payload["query_results"]
-        architecture = session.state.context.proposed_architecture or "(architecture not recorded)"
-        prompt = build_synthesis_prompt(
-            question=handoff.payload["question"],
-            architecture_context=architecture[:2000],
-            query_results=format_query_results(results),
-            mode=session.state.mode,
-        )
-        answer = self.llm.complete(
-            [{"role": "user", "content": prompt}],
-            system=SYSTEM_PROMPT,
-            step="pricing-followup" if handoff.payload["followup"] else "pricing-synthesis",
-        )
-        return Reply(ChatResponse(answer=answer, response_type="pricing", query_results=results))
+def synthesizer(state: LakePlanState, runtime: Runtime[LakePlanContext]) -> Command[Literal["respond"]]:
+    """Write the customer-facing estimate, grounded only in the rows it was handed."""
+    results = state["query_results"]
+    architecture = state["context"].proposed_architecture or "(architecture not recorded)"
+    prompt = build_synthesis_prompt(
+        question=state["question"],
+        architecture_context=architecture[:2000],
+        query_results=format_query_results(results),
+        mode=state.get("mode", "user"),
+    )
+    answer = runtime.context.llm.complete(
+        [{"role": "user", "content": prompt}],
+        system=SYSTEM_PROMPT,
+        step="pricing-followup" if state.get("followup") else "pricing-synthesis",
+    )
+    return reply(state, "synthesizer", ChatResponse(answer=answer, response_type="pricing", query_results=results))

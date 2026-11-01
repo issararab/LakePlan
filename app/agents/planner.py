@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from app.agents.base import Agent, Handoff, Reply, Session
+from typing import Literal
+
+from langgraph.runtime import Runtime
+from langgraph.types import Command
+
+from app.agents.state import LakePlanContext, LakePlanState, hand_off, reply
 from app.planner import plan
-from app.schemas import AgentPhase, ChatResponse
+from app.schemas import ChatResponse
 
 # Phrases that mean the customer wants to change an input rather than ask about the estimate.
 _SCENARIO_CHANGE_SIGNALS = (
@@ -13,45 +18,29 @@ _SCENARIO_CHANGE_SIGNALS = (
 )
 
 
-class PlannerAgent(Agent):
-    """Turns a pricing question into a list of self-contained DuckDB lookups.
+def planner(state: LakePlanState, runtime: Runtime[LakePlanContext]) -> Command[Literal["sql_analyst", "intake", "respond"]]:
+    """Turn a pricing question into a list of self-contained DuckDB lookups.
 
-    Holds the conversation once a price has been given, so it also handles follow-ups.
-
-    Hands off to:
-        sql_analyst: with the planned lookups. Payload: question, followup, queries.
-        intake: when a follow-up changes the scenario. Payload: reopen="scenario_change".
-
-    Accepts handoffs with payload:
-        question: The pricing question to plan for.
-        followup: True for a customer follow-up, False for the first estimate.
+    Prices the architect's brief when the architect hands over. Once a price has been
+    given it holds the conversation, so it also answers follow-ups, and hands back to
+    intake when a follow-up changes the scenario (`reopen="scenario_change"`).
     """
+    if state.get("sender"):
+        question, followup = state["question"], state["followup"]
+    else:
+        message = state["message"]
+        if any(signal in message.lower() for signal in _SCENARIO_CHANGE_SIGNALS):
+            return hand_off(state, "planner", "intake", "Customer wants to change the scenario", reopen="scenario_change")
+        question, followup = message, True
 
-    name = "planner"
-    role = "Breaks a pricing question into the DuckDB lookups needed to answer it."
-    phase = AgentPhase.PRICING
+    pricing_plan = plan(state.get("history", []), question, runtime.context.llm)
 
-    def run(self, message: str, session: Session, handoff: Handoff | None) -> Handoff | Reply:
-        if handoff is not None:
-            question, followup = handoff.payload["question"], handoff.payload["followup"]
-        else:
-            if any(signal in message.lower() for signal in _SCENARIO_CHANGE_SIGNALS):
-                return Handoff(
-                    to="intake",
-                    reason="Customer wants to change the scenario",
-                    payload={"reopen": "scenario_change"},
-                )
-            question, followup = message, True
+    if pricing_plan.action == "ask":
+        return reply(state, "planner", ChatResponse(answer=pricing_plan.questions or ""))
 
-        pricing_plan = plan(session.history, question, self.llm)
-
-        if pricing_plan.action == "ask":
-            return Reply(ChatResponse(answer=pricing_plan.questions or ""))
-
-        count = len(pricing_plan.queries)
-        return Handoff(
-            to="sql_analyst",
-            reason=f"{count} lookup{'s' if count != 1 else ''} planned: "
-                   + ", ".join(q.name for q in pricing_plan.queries),
-            payload={"question": question, "followup": followup, "queries": pricing_plan.queries},
-        )
+    count = len(pricing_plan.queries)
+    return hand_off(
+        state, "planner", "sql_analyst",
+        f"{count} lookup{'s' if count != 1 else ''} planned: " + ", ".join(q.name for q in pricing_plan.queries),
+        question=question, followup=followup, queries=pricing_plan.queries,
+    )

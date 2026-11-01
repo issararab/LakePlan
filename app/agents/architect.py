@@ -5,10 +5,16 @@ from __future__ import annotations
 import logging
 import re
 
+from typing import Literal
+
+from langgraph.runtime import Runtime
+from langgraph.types import Command
+
 from app import debug_collector as dbg
-from app.agents.base import Agent, Handoff, Reply, Session
+from app.agents.state import LakePlanContext, LakePlanState, hand_off, reply
 from app.architecture_generator import adjust_architecture, generate_architecture
-from app.schemas import AgentPhase, ChatResponse, CollectedContext
+from app.llm import LLMProvider
+from app.schemas import ChatResponse, CollectedContext
 
 logger = logging.getLogger(__name__)
 
@@ -116,102 +122,98 @@ def pricing_brief(context: CollectedContext) -> str:
     return " ".join(parts)
 
 
-class ArchitectAgent(Agent):
-    """Proposes an architecture, adjusts it on request, and waits for approval.
+def architect(state: LakePlanState, runtime: Runtime[LakePlanContext]) -> Command[Literal["planner", "intake", "respond"]]:
+    """Propose an architecture, adjust it on request, and wait for approval.
 
-    Hands off to:
-        planner: once the customer approves. Payload: question (the pricing brief),
-            followup=False.
-        intake: after MAX_APPROVAL_REJECTIONS change requests in a row, when the
-            requirements need revisiting. Payload: reopen="rethink".
-
-    Accepts handoffs from:
-        intake: requirements are complete, so design a new architecture.
+    Designs a new architecture when intake hands over (or none exists yet). Otherwise
+    reads the customer's message as approval or a change request. Hands off to planner
+    once approved (with the pricing brief as `question`), or back to intake after
+    MAX_APPROVAL_REJECTIONS change requests in a row (`reopen="rethink"`).
     """
+    llm = runtime.context.llm
+    if state.get("sender") or not state["context"].proposed_architecture:
+        return _propose(state, llm)
+    return _review(state, llm)
 
-    name = "architect"
-    role = "Designs the Databricks architecture and gets the customer's approval."
-    phase = AgentPhase.ARCHITECTURE_APPROVAL
 
-    def run(self, message: str, session: Session, handoff: Handoff | None) -> Handoff | Reply:
-        if handoff is not None or not session.state.context.proposed_architecture:
-            return self._propose(session)
-        return self._review(message, session)
+def _propose(state: LakePlanState, llm: LLMProvider) -> Command:
+    architecture = generate_architecture(state["context"], llm, mode=state.get("mode", "user"))
+    context = state["context"].merge({"proposed_architecture": architecture})
+    return reply(
+        state, "architect",
+        ChatResponse(answer=architecture, response_type="architecture_proposal"),
+        context=context, rejections=0,
+    )
 
-    def _propose(self, session: Session) -> Reply:
-        state = session.state
-        architecture = generate_architecture(state.context, self.llm, mode=state.mode)
-        state.context = state.context.merge({"proposed_architecture": architecture})
-        state.consecutive_approval_rejections = 0
-        return Reply(ChatResponse(answer=architecture, response_type="architecture_proposal"))
 
-    def _review(self, message: str, session: Session) -> Handoff | Reply:
-        """Interpret the customer's answer to a proposal as approval or a change request.
+def _review(state: LakePlanState, llm: LLMProvider) -> Command:
+    """Interpret the customer's answer to a proposal as approval or a change request.
 
-        Uses a keyword scan first and asks the LLM only for ambiguous messages. A clear
-        approval always proceeds to pricing, even after the rejection limit is reached.
-        """
-        state = session.state
-        decision = detect_approval(message)
+    Uses a keyword scan first and asks the LLM only for ambiguous messages. A clear
+    approval always proceeds to pricing, even after the rejection limit is reached.
+    """
+    message = state["message"]
+    context = state["context"]
+    rejections = state.get("rejections", 0)
+    decision = detect_approval(message)
 
-        if decision == "approve":
-            dbg.add("Approval", "Architecture approved by user", "transition")
-            return self._approved(session)
+    if decision == "approve":
+        dbg.add("Approval", "Architecture approved by user", "transition")
+        return _approved(state)
 
-        # Stuck-loop safety valve — checked after approval so the user can still accept
-        if state.consecutive_approval_rejections >= MAX_APPROVAL_REJECTIONS:
-            return Handoff(
-                to="intake",
-                reason=f"{MAX_APPROVAL_REJECTIONS} change requests in a row — requirements need revisiting",
-                payload={"reopen": "rethink"},
-            )
-
-        if decision == "reject":
-            state.consecutive_approval_rejections += 1
-            updated = adjust_architecture(
-                original_architecture=state.context.proposed_architecture or "",
-                user_feedback=message,
-                context=state.context,
-                llm=self.llm,
-            )
-            state.context = state.context.merge({"proposed_architecture": updated})
-            return Reply(ChatResponse(answer=updated, response_type="architecture_proposal"))
-
-        # Ambiguous — ask the LLM to interpret
-        interpretation = self.llm.complete(
-            [{"role": "user", "content": (
-                f"The user was shown an architecture proposal and responded: \"{message}\"\n\n"
-                "Is this an approval, a request for changes, or something else?\n"
-                "Reply with ONLY one word: 'approve', 'reject', or 'unclear'."
-            )}],
-            step="approval-classifier",
-        ).strip().lower()
-
-        if "approve" in interpretation:
-            return self._approved(session)
-
-        if "reject" in interpretation or "unclear" in interpretation:
-            state.consecutive_approval_rejections += 1
-            return Reply(ChatResponse(
-                answer=(
-                    "I want to make sure I understand correctly — would you like to approve this architecture "
-                    "and proceed to pricing, or would you like to make some changes first?\n\n"
-                    "If you'd like changes, please describe what you'd like to adjust."
-                ),
-                response_type="architecture_proposal",
-            ))
-
-        return Reply(ChatResponse(
-            answer="Could you confirm — do you approve this architecture, or would you like to adjust something?",
-            response_type="architecture_proposal",
-        ))
-
-    @staticmethod
-    def _approved(session: Session) -> Handoff:
-        state = session.state
-        state.context = state.context.merge({"architecture_approved": True})
-        return Handoff(
-            to="planner",
-            reason="Architecture approved — pricing it",
-            payload={"question": pricing_brief(state.context), "followup": False},
+    # Stuck-loop safety valve — checked after approval so the user can still accept
+    if rejections >= MAX_APPROVAL_REJECTIONS:
+        return hand_off(
+            state, "architect", "intake",
+            f"{MAX_APPROVAL_REJECTIONS} change requests in a row — requirements need revisiting",
+            reopen="rethink",
         )
+
+    if decision == "reject":
+        updated = adjust_architecture(
+            original_architecture=context.proposed_architecture or "",
+            user_feedback=message,
+            context=context,
+            llm=llm,
+        )
+        return reply(
+            state, "architect",
+            ChatResponse(answer=updated, response_type="architecture_proposal"),
+            context=context.merge({"proposed_architecture": updated}), rejections=rejections + 1,
+        )
+
+    # Ambiguous — ask the LLM to interpret
+    interpretation = llm.complete(
+        [{"role": "user", "content": (
+            f"The user was shown an architecture proposal and responded: \"{message}\"\n\n"
+            "Is this an approval, a request for changes, or something else?\n"
+            "Reply with ONLY one word: 'approve', 'reject', or 'unclear'."
+        )}],
+        step="approval-classifier",
+    ).strip().lower()
+
+    if "approve" in interpretation:
+        return _approved(state)
+
+    if "reject" in interpretation or "unclear" in interpretation:
+        return reply(state, "architect", ChatResponse(
+            answer=(
+                "I want to make sure I understand correctly — would you like to approve this architecture "
+                "and proceed to pricing, or would you like to make some changes first?\n\n"
+                "If you'd like changes, please describe what you'd like to adjust."
+            ),
+            response_type="architecture_proposal",
+        ), rejections=rejections + 1)
+
+    return reply(state, "architect", ChatResponse(
+        answer="Could you confirm — do you approve this architecture, or would you like to adjust something?",
+        response_type="architecture_proposal",
+    ))
+
+
+def _approved(state: LakePlanState) -> Command:
+    context = state["context"].merge({"architecture_approved": True})
+    return hand_off(
+        state, "architect", "planner", "Architecture approved — pricing it",
+        context=context, question=pricing_brief(context), followup=False,
+    )

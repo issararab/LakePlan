@@ -3,20 +3,21 @@
 sequenceDiagram
     autonumber
     actor C as Customer
-    participant O as Coordinator
+    participant G as LangGraph
     participant A as Architect
     participant P as Planner
     participant S as SQL analyst
     participant Y as Synthesizer
 
-    C->>O: "Yes, approve"
-    O->>A: message
-    A-->>O: Handoff → planner (brief)
-    O->>P: run(handoff)
-    P-->>O: Handoff → sql_analyst (lookups)
-    O->>S: run(handoff)
+    C->>G: "Yes, approve"
+    G->>A: START → architect
+    A-->>G: goto planner (brief)
+    G->>P: run planner
+    P-->>G: goto sql_analyst (lookups)
+    G->>S: run sql_analyst
     Note over S: write SQL → validate → run on DuckDB
-    S-->>O: Handoff → synthesizer (rows)
-    O->>Y: run(handoff)
-    Y-->>O: Reply (estimate)
-    O->>C: estimate (agent = synthesizer)
+    S-->>G: goto synthesizer (rows)
+    G->>Y: run synthesizer
+    Y-->>G: goto respond (estimate)
+    Note over G: respond saves the turn to the session thread
+    G->>C: estimate (agent = synthesizer)

@@ -37,7 +37,7 @@
   <!-- ═══ FASTAPI BACKEND ═══ -->
   <rect x="370" y="145" width="220" height="52" rx="10" fill="#065f46" stroke="#34d399" stroke-width="2"/>
   <text x="480" y="167" text-anchor="middle" font-size="12" font-weight="700" fill="white">FastAPI Backend</text>
-  <text x="480" y="184" text-anchor="middle" font-size="9.5" fill="#a7f3d0">/chat · /reset · /health · Session Registry</text>
+  <text x="480" y="184" text-anchor="middle" font-size="9.5" fill="#a7f3d0">/chat · /reset · /health · graph threads</text>
 
   <!-- FastAPI → Agent arrow -->
   <line x1="480" y1="197" x2="480" y2="218" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arr)"/>
@@ -67,7 +67,7 @@
 
   <!-- ═══ AGENT TEAM CONTAINER ═══ -->
   <rect x="20" y="222" width="714" height="298" rx="12" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6,4"/>
-  <text x="377" y="240" text-anchor="middle" font-size="10.5" font-weight="600" fill="#475569">Agent team · app/agents/ (coordinated by app/agent.py)</text>
+  <text x="377" y="240" text-anchor="middle" font-size="10.5" font-weight="600" fill="#475569">LangGraph StateGraph · agent nodes in app/agents/ (app/graph.py)</text>
 
   <!-- ─── Phase 1: Context Collection ─── -->
   <rect x="34" y="248" width="158" height="110" rx="8" fill="white" stroke="#3b82f6" stroke-width="2"/>
@@ -77,7 +77,7 @@
   <text x="113" y="292" text-anchor="middle" font-size="8.5" fill="#1d4ed8">LLM extracts structured</text>
   <text x="113" y="305" text-anchor="middle" font-size="8.5" fill="#1d4ed8">fields from conversation</text>
   <text x="113" y="318" text-anchor="middle" font-size="8.5" fill="#1d4ed8">completeness check</text>
-  <text x="113" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">IntakeAgent · agents/intake.py</text>
+  <text x="113" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">intake node · agents/intake.py</text>
 
   <line x1="192" y1="303" x2="208" y2="303" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrs)"/>
 
@@ -89,7 +89,7 @@
   <text x="287" y="292" text-anchor="middle" font-size="8.5" fill="#166534">Rule engine → ingestion</text>
   <text x="287" y="305" text-anchor="middle" font-size="8.5" fill="#166534">compute + serving recs</text>
   <text x="287" y="318" text-anchor="middle" font-size="8.5" fill="#166534">LLM generates diagram</text>
-  <text x="287" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">ArchitectAgent · rules.py</text>
+  <text x="287" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">architect node · rules.py</text>
 
   <line x1="366" y1="303" x2="382" y2="303" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrs)"/>
 
@@ -101,7 +101,7 @@
   <text x="461" y="292" text-anchor="middle" font-size="8.5" fill="#9a3412">User approves → planner</text>
   <text x="461" y="305" text-anchor="middle" font-size="8.5" fill="#9a3412">or requests changes</text>
   <text x="461" y="318" text-anchor="middle" font-size="8.5" fill="#9a3412">3 rejections → intake</text>
-  <text x="461" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">ArchitectAgent · agents/architect.py</text>
+  <text x="461" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">architect node · agents/architect.py</text>
 
   <line x1="540" y1="303" x2="556" y2="303" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrs)"/>
 
@@ -110,20 +110,20 @@
   <rect x="556" y="248" width="162" height="28" rx="8" fill="#9333ea"/>
   <rect x="556" y="264" width="162" height="12" fill="#9333ea"/>
   <text x="637" y="267" text-anchor="middle" font-size="10" font-weight="700" fill="white">④ Pricing Agents</text>
-  <text x="637" y="292" text-anchor="middle" font-size="8.5" fill="#6b21a8">PlannerAgent → lookups</text>
-  <text x="637" y="305" text-anchor="middle" font-size="8.5" fill="#6b21a8">SQLAnalystAgent → DuckDB</text>
-  <text x="637" y="318" text-anchor="middle" font-size="8.5" fill="#6b21a8">SynthesizerAgent → answer</text>
+  <text x="637" y="292" text-anchor="middle" font-size="8.5" fill="#6b21a8">planner → lookups</text>
+  <text x="637" y="305" text-anchor="middle" font-size="8.5" fill="#6b21a8">sql_analyst → DuckDB</text>
+  <text x="637" y="318" text-anchor="middle" font-size="8.5" fill="#6b21a8">synthesizer → answer → respond</text>
   <text x="637" y="334" text-anchor="middle" font-size="8" fill="#94a3b8">planner · sql_analyst · synthesizer</text>
 
   <!-- ─── Pricing Pipeline Detail Row ─── -->
   <rect x="34" y="370" width="692" height="132" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
-  <text x="380" y="387" text-anchor="middle" font-size="9" font-weight="600" fill="#64748b">Pricing agents — step detail</text>
+  <text x="380" y="387" text-anchor="middle" font-size="9" font-weight="600" fill="#64748b">Pricing nodes — step detail</text>
 
   <!-- Sub-box 1: Planner -->
   <rect x="44" y="394" width="116" height="96" rx="6" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
   <rect x="44" y="394" width="116" height="24" rx="6" fill="#9333ea"/>
   <rect x="44" y="406" width="116" height="12" fill="#9333ea"/>
-  <text x="102" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">PlannerAgent</text>
+  <text x="102" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">planner</text>
   <text x="102" y="432" text-anchor="middle" font-size="8.5" fill="#7e22ce">LLM decision:</text>
   <text x="102" y="445" text-anchor="middle" font-size="8.5" fill="#7e22ce">ask | query</text>
   <text x="102" y="458" text-anchor="middle" font-size="8.5" fill="#7e22ce">→ QuerySpec list</text>
@@ -135,7 +135,7 @@
   <rect x="170" y="394" width="116" height="96" rx="6" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
   <rect x="170" y="394" width="116" height="24" rx="6" fill="#9333ea"/>
   <rect x="170" y="406" width="116" height="12" fill="#9333ea"/>
-  <text x="228" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">SQLAnalystAgent</text>
+  <text x="228" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">sql_analyst</text>
   <text x="228" y="432" text-anchor="middle" font-size="8.5" fill="#7e22ce">LLM → SELECT</text>
   <text x="228" y="445" text-anchor="middle" font-size="8.5" fill="#7e22ce">extract from resp</text>
   <text x="228" y="458" text-anchor="middle" font-size="8.5" fill="#7e22ce">1 repair retry</text>
@@ -171,7 +171,7 @@
   <rect x="548" y="394" width="168" height="96" rx="6" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
   <rect x="548" y="394" width="168" height="24" rx="6" fill="#9333ea"/>
   <rect x="548" y="406" width="168" height="12" fill="#9333ea"/>
-  <text x="632" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">SynthesizerAgent</text>
+  <text x="632" y="410" text-anchor="middle" font-size="9.5" font-weight="700" fill="white">synthesizer</text>
   <text x="632" y="432" text-anchor="middle" font-size="8.5" fill="#6b21a8">question + SQL + rows</text>
   <text x="632" y="445" text-anchor="middle" font-size="8.5" fill="#6b21a8">→ grounded cost estimate</text>
   <text x="632" y="458" text-anchor="middle" font-size="8.5" fill="#6b21a8">never invents prices</text>

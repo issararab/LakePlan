@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import logging
+from typing import Literal
+
+from langgraph.runtime import Runtime
+from langgraph.types import Command
 
 from app import debug_collector as dbg
-from app.agents.base import Agent, Handoff, Reply, Session
+from app.agents.state import LakePlanContext, LakePlanState, hand_off, reply
 from app.duckdb_client import execute_query
 from app.llm import LLMProvider
 from app.planner import QuerySpec
-from app.schemas import AgentPhase, ChatResponse, QueryResult
+from app.schemas import ChatResponse, QueryResult
 from app.sql_generator import generate_sql
 from app.sql_validator import SQLValidationError
 
@@ -38,49 +42,31 @@ def run_query_spec(spec: QuerySpec, llm: LLMProvider) -> QueryResult | None:
     return QueryResult(name=spec.name, sql=sql, rows=rows)
 
 
-class SQLAnalystAgent(Agent):
-    """Runs each planned lookup: LLM writes the SQL, the validator checks it, DuckDB runs it.
+def sql_analyst(state: LakePlanState, runtime: Runtime[LakePlanContext]) -> Command[Literal["synthesizer", "respond"]]:
+    """Run each planned lookup: the LLM writes the SQL, the validator checks it, DuckDB runs it.
 
-    Hands off to:
-        synthesizer: with the results. Payload: question, followup, query_results.
-
-    Accepts handoffs with payload:
-        question, followup: Passed through to the synthesizer.
-        queries: The QuerySpecs to run.
+    Hands the results to the synthesizer. If every lookup failed it answers itself, so the
+    synthesizer never writes an estimate without data.
     """
+    queries = state.get("queries", [])
+    results: list[QueryResult] = []
+    for spec in queries:
+        result = run_query_spec(spec, runtime.context.llm)
+        if result is not None:
+            results.append(result)
+            dbg.add(f"SQL: {spec.name}", f"{len(result.rows)} row(s) returned", "sql")
+        else:
+            dbg.add(f"SQL: {spec.name}", "Query failed or returned no data", "error")
 
-    name = "sql_analyst"
-    role = "Writes, validates and runs read-only DuckDB SQL for each planned lookup."
-    phase = AgentPhase.PRICING
+    if not results:
+        return reply(state, "sql_analyst", ChatResponse(answer=(
+            "I wasn't able to retrieve pricing data. "
+            "Please try rephrasing, or be more specific about the workload type."
+        )))
 
-    def run(self, message: str, session: Session, handoff: Handoff | None) -> Handoff | Reply:
-        if handoff is None:
-            raise ValueError("The SQL analyst only works on a handoff from the planner")
-
-        queries: list[QuerySpec] = handoff.payload["queries"]
-        results: list[QueryResult] = []
-        for spec in queries:
-            result = run_query_spec(spec, self.llm)
-            if result is not None:
-                results.append(result)
-                dbg.add(f"SQL: {spec.name}", f"{len(result.rows)} row(s) returned", "sql")
-            else:
-                dbg.add(f"SQL: {spec.name}", "Query failed or returned no data", "error")
-
-        if not results:
-            # Never let the synthesizer answer without data: it must not invent prices.
-            return Reply(ChatResponse(answer=(
-                "I wasn't able to retrieve pricing data. "
-                "Please try rephrasing, or be more specific about the workload type."
-            )))
-
-        rows = sum(len(r.rows) for r in results)
-        return Handoff(
-            to="synthesizer",
-            reason=f"{len(results)} of {len(queries)} lookups ran, {rows} row(s) of pricing data",
-            payload={
-                "question": handoff.payload["question"],
-                "followup": handoff.payload["followup"],
-                "query_results": results,
-            },
-        )
+    rows = sum(len(r.rows) for r in results)
+    return hand_off(
+        state, "sql_analyst", "synthesizer",
+        f"{len(results)} of {len(queries)} lookups ran, {rows} row(s) of pricing data",
+        query_results=results,
+    )
