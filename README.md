@@ -29,23 +29,7 @@ Each step is handled by its own agent, as described below.
 
 LakePlan runs each session with **a team of five agents**. Each agent does one job with its own prompts and tools, and ends its turn in one of two ways: it **replies** to the customer, or it **passes the work to a teammate** along with a reason and the data the teammate needs. The coordinator in [`app/agent.py`](app/agent.py) only routes; the agents decide who goes next.
 
-```mermaid
-flowchart LR
-    I["🧾 Intake<br/>collects<br/>requirements"]
-    A["🏗️ Architect<br/>designs, gets<br/>approval"]
-    P["🧭 Planner<br/>plans the<br/>lookups"]
-    S["🗄️ SQL analyst<br/>writes + runs<br/>SQL"]
-    Y["✍️ Synthesizer<br/>writes the<br/>estimate"]
-    DB[("DuckDB<br/>Azure prices")]
-
-    I == "complete" ==> A
-    A == "approved<br/>+ brief" ==> P
-    P == "lookups" ==> S
-    S == "rows" ==> Y
-    S <-.-> DB
-    A -. "rethink" .-> I
-    P -. "new scenario" .-> I
-```
+![LakePlan's five agents and the work they pass to each other](docs/agents-flow.svg)
 
 | Agent | Its job | Tools it uses | Hands off to |
 |---|---|---|---|
@@ -75,28 +59,7 @@ The rules the team follows:
 <details>
 <summary><b>One turn, step by step:</b> the customer approves the architecture</summary>
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor C as Customer
-    participant O as Coordinator
-    participant A as Architect
-    participant P as Planner
-    participant S as SQL analyst
-    participant Y as Synthesizer
-
-    C->>O: "Yes, approve"
-    O->>A: message (the architect holds the conversation)
-    A-->>O: Handoff → planner · pricing brief
-    O->>P: run(handoff)
-    P-->>O: Handoff → sql_analyst · 3 lookups planned
-    O->>S: run(handoff)
-    Note over S: LLM writes SQL → SQLGlot validates → DuckDB runs it read-only
-    S-->>O: Handoff → synthesizer · rows
-    O->>Y: run(handoff)
-    Y-->>O: Reply (estimate)
-    O->>C: answer · phase = pricing · agent = synthesizer
-```
+![One turn: the architect passes the approved design to the planner, the planner passes lookups to the SQL analyst, and the SQL analyst passes rows to the synthesizer](docs/agents-turn.svg)
 
 The API response says which agent answered (`"agent": "synthesizer"`), and in Debug mode `debug_steps` lists each `Handoff` with its reason.
 
