@@ -1,87 +1,68 @@
-"""Runs a LakePlan session as a team of agents that hand work to each other.
-
-    intake ──► architect ──► planner ──► sql_analyst ──► synthesizer
-      ▲            │            │
-      └────────────┴────────────┘   hand back when the requirements change
-
-Each turn starts with the agent that holds the conversation for the current phase.
-An agent either replies to the customer or hands off to another agent with a reason
-and a payload. The coordinator below follows the handoffs, records them, and stamps the
-reply with the phase and name of the agent that wrote it.
-"""
+"""Customer sessions on the LakePlan graph. Each browser session is one LangGraph thread."""
 
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
+from typing import Any
+
+from langgraph.errors import GraphRecursionError
+from langgraph.graph.state import CompiledStateGraph
 
 from app import debug_collector as dbg
-from app.agents import (
-    Agent,
-    AgentName,
-    ArchitectAgent,
-    Handoff,
-    IntakeAgent,
-    PlannerAgent,
-    Reply,
-    Session,
-    SQLAnalystAgent,
-    SynthesizerAgent,
-)
+from app.agents.state import TURN_DEFAULTS, LakePlanContext
+from app.graph import build_graph
 from app.llm import LLMProvider, get_llm_provider
-from app.schemas import AgentPhase, AgentState, ChatResponse, CollectedContext
+from app.schemas import AgentPhase, ChatResponse, CollectedContext
 
 logger = logging.getLogger(__name__)
 
-_MAX_HISTORY = 20
-
-# The longest legitimate chain is architect → planner → sql_analyst → synthesizer (3 handoffs).
-_MAX_HANDOFFS_PER_TURN = 5
-
-# Which agent holds the conversation in each phase, i.e. who gets the customer's next message.
-_PHASE_OWNER: dict[AgentPhase, AgentName] = {
-    AgentPhase.CONTEXT_COLLECTION: "intake",
-    AgentPhase.ARCHITECTURE_PROPOSAL: "architect",
-    AgentPhase.ARCHITECTURE_APPROVAL: "architect",
-    AgentPhase.PRICING: "planner",
-}
+# Graph steps per turn. The longest real turn is architect → planner → sql_analyst →
+# synthesizer → respond (5 steps), so 10 leaves room and still stops a routing loop.
+RECURSION_LIMIT = 10
 
 
 class PricingAgent:
-    """Coordinates one customer session across the agent team. One instance per browser session.
+    """One customer session. Turns run on the LakePlan graph; the graph's checkpointer
+    keeps the session's state under `session_id`.
 
     Attributes:
-        last_trace: Names of the agents that worked on the most recent turn, in order.
-        _llm: LLM provider shared by all agents in the session.
-        _agents: The agent team, keyed by name.
-        _history: Sliding window of conversation messages (capped at _MAX_HISTORY).
-        _state: Current phase, collected context, and session mode.
+        session_id: The LangGraph thread id for this session.
     """
 
-    def __init__(self, llm: LLMProvider | None = None) -> None:
-        """Builds the agent team around a shared LLM provider instance."""
+    def __init__(
+        self,
+        llm: LLMProvider | None = None,
+        session_id: str = "local",
+        graph: CompiledStateGraph | None = None,
+    ) -> None:
+        """Uses a private graph and checkpointer unless a shared graph is passed in."""
+        self.session_id = session_id
         self._llm = llm or get_llm_provider()
-        team: tuple[Agent, ...] = (
-            IntakeAgent(self._llm),
-            ArchitectAgent(self._llm),
-            PlannerAgent(self._llm),
-            SQLAnalystAgent(self._llm),
-            SynthesizerAgent(self._llm),
-        )
-        self._agents: dict[str, Agent] = {agent.name: agent for agent in team}
-        self._history: list[dict] = []
-        self._state = AgentState()
-        self.last_trace: list[str] = []
+        self._graph = graph or build_graph()
+
+    @property
+    def _config(self) -> dict[str, Any]:
+        return {
+            "configurable": {"thread_id": self.session_id},
+            "recursion_limit": RECURSION_LIMIT,
+            "run_name": "lakeplan-turn",
+            "metadata": {"session_id": self.session_id},
+        }
+
+    @property
+    def state(self) -> dict[str, Any]:
+        """The session's current graph state (empty before the first message)."""
+        return self._graph.get_state(self._config).values
+
+    @property
+    def last_trace(self) -> list[str]:
+        """Agents that worked on the most recent turn, in order."""
+        return self.state.get("trace", [])
 
     def reset(self) -> None:
-        """Reset conversation history and agent state, returning to context collection."""
-        self._history.clear()
-        self._state = AgentState()
-
-    def _append_history(self, role: str, content: str) -> None:
-        """Append a message to the conversation history, evicting the oldest when over the limit."""
-        self._history.append({"role": role, "content": content})
-        if len(self._history) > _MAX_HISTORY:
-            self._history = self._history[-_MAX_HISTORY:]
+        """Forget the session: delete its thread from the checkpointer."""
+        self._graph.checkpointer.delete_thread(self.session_id)
 
     def handle(
         self,
@@ -90,86 +71,56 @@ class PricingAgent:
         path_label: str | None = None,
         mode: str = "user",
     ) -> ChatResponse:
-        """Process an incoming user message and return the agent response.
+        """Run one turn of the conversation and return the answer.
 
-        Reinitialises state when path_id is provided (first message of a session).
-        This handles page-refresh scenarios where the browser UUID persists but the
-        agent should start fresh.
+        Starts a fresh session when path_id is provided (first message of a session),
+        which also covers a page refresh that keeps the same browser session id.
 
         Args:
             message: The user's message text.
             path_id: Use-case path identifier; sent on the first message only.
             path_label: Human-readable path label; sent on the first message only.
-            mode: Session rendering mode ('user' or 'debug'). Locked on the first message.
+            mode: Session rendering mode ('user' or 'debug'). Locked once set to debug.
 
         Returns:
-            ChatResponse containing the agent's answer and optional debug steps.
+            ChatResponse with the answer, the phase and agent, and debug steps in debug mode.
         """
-        # Reinitialise whenever path_id is provided (onboarding first message).
-        # This handles page-refresh without /reset: sessionStorage keeps the same
-        # UUID, so the server session may still be in PRICING from a previous run.
-        if path_id:
-            self._history.clear()
-            self._state = AgentState()
-            self._state.context = CollectedContext(
-                path_id=path_id,
-                path_label=path_label or path_id,
-                initial_description=message,
+        current = self.state
+        turn: dict[str, Any] = {**TURN_DEFAULTS, "message": message}
+
+        if path_id or not current:
+            turn.update(
+                phase=AgentPhase.CONTEXT_COLLECTION,
+                context=CollectedContext(
+                    path_id=path_id or "",
+                    path_label=(path_label or path_id or ""),
+                    initial_description=message if path_id else "",
+                ),
+                history=[],
+                rejections=0,
             )
+            previous_mode = "user"
+        else:
+            previous_mode = current.get("mode", "user")
+        turn["mode"] = "debug" if "debug" in (previous_mode, mode) else "user"
 
-        # Lock mode on the first message — it stays for the session
-        if self._state.mode == "user" and mode == "debug":
-            self._state.mode = "debug"
-
-        # Start debug collection for this request (noop if not debug)
-        steps = dbg.start() if self._state.mode == "debug" else None
-
-        response = self._run_turn(message)
-        self._append_history("user", message)
-        self._append_history("assistant", response.answer)
+        steps = dbg.start() if turn["mode"] == "debug" else None
+        try:
+            result = self._graph.invoke(turn, self._config, context=LakePlanContext(llm=self._llm))
+            response: ChatResponse = result["response"]
+        except GraphRecursionError:
+            logger.error("Turn stopped after %d graph steps (%s)", RECURSION_LIMIT, " → ".join(self.last_trace))
+            response = ChatResponse(
+                answer="Sorry, I lost track of that request. Could you rephrase it?",
+                phase=self.state.get("phase", AgentPhase.CONTEXT_COLLECTION),
+            )
+        finally:
+            if steps is not None:
+                dbg.stop()
 
         if steps:
             response.debug_steps = steps
-            dbg.stop()
-
         return response
-
-    def _run_turn(self, message: str) -> ChatResponse:
-        """Give the message to the agent that holds the conversation and follow its handoffs."""
-        phase = self._state.phase
-        owner = _PHASE_OWNER[phase]
-        logger.info("Turn phase=%s agent=%s path=%s mode=%s | message: %s",
-                    phase.value, owner, self._state.context.path_id or "unknown", self._state.mode,
-                    (message[:80] + "…") if len(message) > 80 else message)
-        dbg.add("Phase", phase.value, "phase")
-
-        session = Session(state=self._state, history=self._history)
-        agent = self._agents[owner]
-        handoff: Handoff | None = None
-        self.last_trace = []
-
-        for _ in range(_MAX_HANDOFFS_PER_TURN + 1):
-            self.last_trace.append(agent.name)
-            outcome = agent.run(message, session, handoff)
-
-            if isinstance(outcome, Reply):
-                # Whoever replies holds the conversation, so the next message goes back to them
-                self._state.phase = agent.phase
-                response = outcome.response
-                response.phase = agent.phase
-                response.agent = agent.name
-                return response
-
-            handoff = outcome
-            logger.info("Handoff %s → %s: %s", agent.name, handoff.to, handoff.reason)
-            dbg.add(f"Handoff: {agent.name} → {handoff.to}", handoff.reason, "handoff")
-            agent = self._agents[handoff.to]
-
-        logger.error("No reply after %d handoffs (%s)", _MAX_HANDOFFS_PER_TURN, " → ".join(self.last_trace))
-        return ChatResponse(
-            answer="Sorry, I lost track of that request. Could you rephrase it?",
-            phase=self._state.phase,
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -177,19 +128,23 @@ class PricingAgent:
 # ---------------------------------------------------------------------------
 
 _MAX_SESSIONS = 200
-_sessions: dict[str, PricingAgent] = {}
+_sessions: OrderedDict[str, PricingAgent] = OrderedDict()
+_shared: dict[str, Any] = {}
 
 
 def get_agent(session_id: str) -> PricingAgent:
-    """Return the PricingAgent for the session, creating and caching one if needed.
+    """Return the PricingAgent for the session, creating one on the shared graph if needed.
 
-    Evicts the oldest session when the registry reaches _MAX_SESSIONS.
+    When the registry is full, the oldest session is dropped and its thread deleted.
     """
     if session_id not in _sessions:
+        if "graph" not in _shared:
+            _shared["graph"] = build_graph()
+            _shared["llm"] = get_llm_provider()
         if len(_sessions) >= _MAX_SESSIONS:
-            oldest = next(iter(_sessions))
-            del _sessions[oldest]
-        _sessions[session_id] = PricingAgent()
+            _, oldest = _sessions.popitem(last=False)
+            oldest.reset()
+        _sessions[session_id] = PricingAgent(llm=_shared["llm"], session_id=session_id, graph=_shared["graph"])
     return _sessions[session_id]
 
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
@@ -112,28 +111,6 @@ class CollectedContext(BaseModel):
             if v is not None and k in data:
                 data[k] = v
         return CollectedContext(**data)
-
-
-# ---------------------------------------------------------------------------
-# Per-session agent state
-# ---------------------------------------------------------------------------
-
-@dataclass
-class AgentState:
-    """Mutable runtime state for a single pricing session.
-
-    Attributes:
-        phase: Current phase in the agent workflow.
-        context: All structured information collected from the conversation.
-        consecutive_approval_rejections: Number of consecutive architecture rejections;
-            hands back to intake at MAX_APPROVAL_REJECTIONS.
-        mode: Session rendering mode ('user' or 'debug'), locked on the first message.
-    """
-
-    phase: AgentPhase = AgentPhase.CONTEXT_COLLECTION
-    context: CollectedContext = field(default_factory=CollectedContext)
-    consecutive_approval_rejections: int = 0
-    mode: str = "user"               # user | debug — set once on first message, stays for the session
 
 
 # ---------------------------------------------------------------------------

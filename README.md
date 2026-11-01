@@ -23,45 +23,62 @@ The agent guides users through a structured flow:
 3. **Architecture proposal** — rule engine + LLM generates a Databricks solution architecture; user approves or requests changes
 4. **Pricing** — a planner agent decides what to look up, a SQL analyst agent queries DuckDB, and a synthesizer agent writes a cost estimate grounded in real Azure Germany pricing data
 
-Each step is handled by its own agent, as described below.
+Each step is its own agent, and the agents run as a LangGraph state graph, as described below.
 
 ## 🤝 How the agents work together
 
-LakePlan runs each session with **a team of five agents**. Each agent does one job with its own prompts and tools, and ends its turn in one of two ways: it **replies** to the customer, or it **passes the work to a teammate** along with a reason and the data the teammate needs. The coordinator in [`app/agent.py`](app/agent.py) only routes; the agents decide who goes next.
+LakePlan runs each session as a **[LangGraph](https://langchain-ai.github.io/langgraph/) state graph with five agent nodes**. Each agent does one job with its own prompts and tools, then returns a LangGraph `Command`: either go to the next agent with the data it needs, or go to `respond`, which answers the customer and ends the turn.
 
-![LakePlan's five agents and the work they pass to each other](docs/agents-flow.svg)
+![LakePlan's agent graph: five agent nodes, the routes between them, and the respond node that ends each turn](docs/agents-flow.svg)
 
-| Agent | Its job | Tools it uses | Hands off to |
+| Agent node | Its job | Tools it uses | Routes to |
 |---|---|---|---|
 | 🧾 **Intake** | Interviews the customer until the requirements are complete | context-extraction LLM, completeness check | **Architect** |
 | 🏗️ **Architect** | Proposes the architecture, adjusts it on request, and writes the pricing brief once it's approved | rule engine, architecture LLM, approval classifier | **Planner** on approval · **Intake** after 3 rejections in a row |
 | 🧭 **Planner** | Breaks the pricing question into self-contained lookups, and handles follow-up questions | planning LLM | **SQL analyst** · **Intake** if the customer changes the scenario |
-| 🗄️ **SQL analyst** | Writes SQL for each lookup, validates it, and runs it read-only | SQL LLM, SQLGlot validator, DuckDB | **Synthesizer** (or replies "no data", so nothing gets invented) |
-| ✍️ **Synthesizer** | Writes the estimate using only the rows it was handed | synthesis LLM | replies to the customer |
+| 🗄️ **SQL analyst** | Writes SQL for each lookup, validates it, and runs it read-only | SQL LLM, SQLGlot validator, DuckDB | **Synthesizer** (or answers "no data" itself, so nothing gets invented) |
+| ✍️ **Synthesizer** | Writes the estimate using only the rows it was handed | synthesis LLM | `respond` |
 
-**A handoff is a value, not a function call.** Here is the architect passing an approved design to the planner ([`app/agents/architect.py`](app/agents/architect.py)):
+The graph is built in [`app/graph.py`](app/graph.py):
 
 ```python
-return Handoff(
-    to="planner",
-    reason="Architecture approved — pricing it",
-    payload={"question": pricing_brief(state.context), "followup": False},
-)
+builder = StateGraph(LakePlanState, context_schema=LakePlanContext)
+builder.add_node("intake", intake)
+builder.add_node("architect", architect)
+builder.add_node("planner", planner)
+builder.add_node("sql_analyst", sql_analyst)
+builder.add_node("synthesizer", synthesizer)
+builder.add_node("respond", respond)
+
+builder.add_conditional_edges(START, route_turn, ["intake", "architect", "planner"])
+builder.add_edge("respond", END)
+graph = builder.compile(checkpointer=new_checkpointer())
 ```
 
-The rules the team follows:
+Each agent declares where it can go in its return type, and LangGraph builds the edges from that. Here is the architect sending an approved design to the planner ([`app/agents/architect.py`](app/agents/architect.py)):
 
-- 🎤 **Whoever replies holds the conversation.** The customer's next message goes to the agent that last answered, so a follow-up after a price goes to the planner, not back through intake.
-- 🧾 **Nothing moves silently.** Every `Handoff` carries a reason, which goes to the logs and to the **Agent steps** panel in Debug mode (marked ⇄).
-- 🧠 **Agents are stateless.** Session state lives in one `Session` object owned by the coordinator in `app/agent.py`, so any agent can be tested on its own.
-- 🛑 **Loops are cut off.** A turn stops after 5 passes between agents. The longest real chain is 3.
+```python
+def architect(state: LakePlanState, runtime: Runtime[LakePlanContext]) -> Command[Literal["planner", "intake", "respond"]]:
+    ...
+    return hand_off(state, "architect", "planner", "Architecture approved — pricing it",
+                    context=context, question=pricing_brief(context), followup=False)
+```
+
+How the pieces fit:
+
+- 🧵 **One thread per session.** The browser's session id is the LangGraph `thread_id`, and the checkpointer keeps each session's state (requirements, architecture, phase, history) between turns. It's an in-memory saver; a SQLite or Postgres saver would keep sessions across restarts and replicas.
+- 🎤 **Whoever answers holds the conversation.** `respond` records the phase of the agent that answered, and the START edge sends the next message back to that agent. A follow-up after a price goes straight to the planner.
+- 🔌 **Dependencies come through the runtime context.** Nodes get the LLM as `runtime.context.llm`, outside the checkpointed state, so the tests run the real graph with a scripted LLM.
+- 🧾 **Every hand-off is logged with a reason**, and the **Agent steps** panel in Debug mode shows it (marked ⇄).
+- 🛑 **Loops are cut off.** Each turn runs with `recursion_limit=10`; the longest real turn takes 5 steps.
+- 🔭 **Tracing.** Set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY`, and each turn appears in [LangSmith](https://smith.langchain.com/) as one `lakeplan-turn` trace with a span per agent node, tagged with the session id.
 
 <details>
 <summary><b>One turn, step by step:</b> the customer approves the architecture</summary>
 
-![One turn: the architect passes the approved design to the planner, the planner passes lookups to the SQL analyst, and the SQL analyst passes rows to the synthesizer](docs/agents-turn.svg)
+![One turn: the architect sends the approved design to the planner, the planner sends lookups to the SQL analyst, the SQL analyst sends rows to the synthesizer, and respond ends the turn](docs/agents-turn.svg)
 
-The API response says which agent answered (`"agent": "synthesizer"`), and in Debug mode `debug_steps` lists each `Handoff` with its reason.
+The API response says which agent answered (`"agent": "synthesizer"`), and in Debug mode `debug_steps` lists each hand-off with its reason.
 
 </details>
 

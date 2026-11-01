@@ -5,12 +5,17 @@ from __future__ import annotations
 import json
 import logging
 
+from typing import Literal
+
+from langgraph.runtime import Runtime
+from langgraph.types import Command
+
 from app import debug_collector as dbg
-from app.agents.base import Agent, Handoff, Reply, Session
+from app.agents.state import LakePlanContext, LakePlanState, hand_off, reply
 from app.context_extractor import extract_context_updates
 from app.llm import LLMProvider
 from app.prompts import COMPLETENESS_CHECK_PROMPT
-from app.schemas import AgentPhase, ChatResponse, CollectedContext
+from app.schemas import ChatResponse, CollectedContext
 from app.utils import extract_json
 
 logger = logging.getLogger(__name__)
@@ -73,78 +78,66 @@ def _to_question(field: str) -> str:
     return _MISSING_FIELD_QUESTIONS.get(field, f"Could you tell me more about your {field.replace('_', ' ')}?")
 
 
-class IntakeAgent(Agent):
-    """Interviews the customer until there is enough to design an architecture.
+def intake(state: LakePlanState, runtime: Runtime[LakePlanContext]) -> Command[Literal["architect", "respond"]]:
+    """Interview the customer until there is enough to design an architecture.
 
-    Hands off to:
-        architect: when both the context extractor and the completeness check agree
-            that the requirements are complete.
-
-    Accepts handoffs with payload:
-        reopen: "rethink" (from the architect, after repeated rejections) or
-            "scenario_change" (from the planner, when the customer changes an input).
+    Hands off to architect when both the context extractor and the completeness check
+    agree the requirements are complete. Takes the conversation back from architect
+    (`reopen="rethink"`, after repeated rejections) or planner (`reopen="scenario_change"`).
     """
+    if state.get("sender"):
+        return _reopen(state)
 
-    name = "intake"
-    role = "Collects the customer's requirements until there is enough to design an architecture."
-    phase = AgentPhase.CONTEXT_COLLECTION
-
-    def run(self, message: str, session: Session, handoff: Handoff | None) -> Handoff | Reply:
-        if handoff is not None:
-            return self._reopen(handoff.payload["reopen"], session)
-
-        state = session.state
-        if not state.context.path_id:
-            return Reply(ChatResponse(answer=(
-                "Please select a path first — DWH Migration, Cloud Platform Migration, "
-                "Real-Time Use Case, ML or GenAI Use Case, or Custom Mode."
-            )))
-
-        action, data = extract_context_updates(
-            message=message,
-            history=session.history,
-            context=state.context,
-            llm=self.llm,
-        )
-        if data.get("extracted"):
-            state.context = state.context.merge(data["extracted"])
-
-        if action == "ask":
-            questions = data.get("questions", "Could you tell me more about your requirements?")
-            return Reply(ChatResponse(answer=_MORE_DETAILS_INTRO + questions))
-
-        complete, missing = _check_completeness(state.context, self.llm)
-        if complete:
-            dbg.add("Completeness check", "Passed — enough information to propose architecture", "extraction")
-        else:
-            dbg.add("Completeness check", f"Missing: {', '.join(missing)}", "extraction")
-
-        if not complete and missing:
-            questions = "\n".join(f"- {_to_question(f)}" for f in missing)
-            return Reply(ChatResponse(answer=_MORE_DETAILS_INTRO + questions))
-
-        logger.info("Context complete — handing off to the architect")
-        return Handoff(to="architect", reason="Requirements complete")
-
-    @staticmethod
-    def _reopen(kind: str, session: Session) -> Reply:
-        """Take the conversation back from a later agent and ask what needs to change."""
-        state = session.state
-        state.consecutive_approval_rejections = 0
-
-        if kind == "scenario_change":
-            # Keep volume and source details, drop the architecture.
-            # model_copy because merge() ignores None values.
-            state.context = state.context.model_copy(
-                update={"proposed_architecture": None, "architecture_approved": False}
-            )
-            return Reply(ChatResponse(answer=(
-                "Sure — I've kept your existing configuration details. "
-                "What would you like to change?"
-            )))
-
-        return Reply(ChatResponse(answer=(
-            "It seems like the architecture needs significant rethinking. "
-            "Let me ask a few more targeted questions to better understand your requirements.\n\n"
-            "What is the most important aspect that the current proposal doesn't address correctly?"
+    llm = runtime.context.llm
+    context = state["context"]
+    if not context.path_id:
+        return reply(state, "intake", ChatResponse(answer=(
+            "Please select a path first — DWH Migration, Cloud Platform Migration, "
+            "Real-Time Use Case, ML or GenAI Use Case, or Custom Mode."
         )))
+
+    action, data = extract_context_updates(
+        message=state["message"],
+        history=state.get("history", []),
+        context=context,
+        llm=llm,
+    )
+    if data.get("extracted"):
+        context = context.merge(data["extracted"])
+
+    if action == "ask":
+        questions = data.get("questions", "Could you tell me more about your requirements?")
+        return reply(state, "intake", ChatResponse(answer=_MORE_DETAILS_INTRO + questions), context=context)
+
+    complete, missing = _check_completeness(context, llm)
+    if complete:
+        dbg.add("Completeness check", "Passed — enough information to propose architecture", "extraction")
+    else:
+        dbg.add("Completeness check", f"Missing: {', '.join(missing)}", "extraction")
+
+    if not complete and missing:
+        questions = "\n".join(f"- {_to_question(f)}" for f in missing)
+        return reply(state, "intake", ChatResponse(answer=_MORE_DETAILS_INTRO + questions), context=context)
+
+    logger.info("Context complete — handing off to the architect")
+    return hand_off(state, "intake", "architect", "Requirements complete", context=context)
+
+
+def _reopen(state: LakePlanState) -> Command:
+    """Take the conversation back from a later agent and ask what needs to change."""
+    if state.get("reopen") == "scenario_change":
+        # Keep volume and source details, drop the architecture.
+        # model_copy because merge() ignores None values.
+        context = state["context"].model_copy(
+            update={"proposed_architecture": None, "architecture_approved": False}
+        )
+        return reply(state, "intake", ChatResponse(answer=(
+            "Sure — I've kept your existing configuration details. "
+            "What would you like to change?"
+        )), context=context, rejections=0)
+
+    return reply(state, "intake", ChatResponse(answer=(
+        "It seems like the architecture needs significant rethinking. "
+        "Let me ask a few more targeted questions to better understand your requirements.\n\n"
+        "What is the most important aspect that the current proposal doesn't address correctly?"
+    )), rejections=0)

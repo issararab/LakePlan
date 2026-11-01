@@ -56,27 +56,31 @@ print(execute_query(\"SELECT tier, price_usd FROM main.azure_web_storage_rates_g
 
 ## Architecture
 
-A session is handled by five agents in `app/agents/` that pass work to each other. `PricingAgent` in `app/agent.py` coordinates them.
+A session runs on a LangGraph `StateGraph` built in `app/graph.py`. Each of the five agents in `app/agents/` is a node; a sixth node, `respond`, closes every turn.
 
-| Agent | Module | Job | Hands off to |
+| Node | Module | Job | Routes to |
 |---|---|---|---|
 | `intake` | `agents/intake.py` | Context extraction + completeness check | `architect` when requirements are complete |
 | `architect` | `agents/architect.py` | Proposes/adjusts the architecture, runs the approval loop, writes the pricing brief | `planner` on approval; `intake` after 3 rejections in a row |
 | `planner` | `agents/planner.py` | Turns a pricing question into `QuerySpec`s; handles follow-ups | `sql_analyst`; `intake` when the customer changes the scenario |
-| `sql_analyst` | `agents/sql_analyst.py` | `sql_generator.py` → `sql_validator.py` (one repair retry) → `duckdb_client.py` (`read_only=True`, ≤ `MAX_ROWS` rows) | `synthesizer`, or replies "no data" if every lookup failed |
-| `synthesizer` | `agents/synthesizer.py` | Writes the answer strictly from the returned rows | never; always replies |
+| `sql_analyst` | `agents/sql_analyst.py` | `sql_generator.py` → `sql_validator.py` (one repair retry) → `duckdb_client.py` (`read_only=True`, ≤ `MAX_ROWS` rows) | `synthesizer`, or `respond` with "no data" if every lookup failed |
+| `synthesizer` | `agents/synthesizer.py` | Writes the answer strictly from the returned rows | `respond` |
 
-How it works (`app/agents/base.py`):
+Every agent can also go to `respond` to answer the customer.
 
-- `Agent.run(message, session, handoff)` returns either `Reply(ChatResponse)` or `Handoff(to, reason, payload)`. `handoff` is `None` when the agent is handling the customer's message directly.
-- The agent that replies holds the conversation. The coordinator stores its `phase`, and `_PHASE_OWNER` in `app/agent.py` sends the next message back to it. Agents don't set `phase` on their responses; the coordinator stamps `phase` and `agent`.
-- Agents are stateless. Conversation state lives in `Session` (`AgentState` + history), which the coordinator owns.
-- Each handoff is logged and added to Debug-mode steps as type `handoff`. `PricingAgent.last_trace` lists the agents that ran in the last turn. A turn stops after `_MAX_HANDOFFS_PER_TURN` (5) handoffs.
-- Each agent's docstring lists the payload keys it reads. The LLM-calling helpers (`context_extractor.py`, `architecture_generator.py`, `planner.py`, `sql_generator.py`) are the agents' tools and know nothing about handoffs.
+How it works:
 
-End-to-end tests in `tests/test_agent_flow.py` drive whole sessions with a scripted LLM (no credentials) and assert which agents ran in each turn.
+- **State** is `LakePlanState` (`app/agents/state.py`), a `TypedDict`. Session fields (`phase`, `context`, `history`, `rejections`, `mode`) persist between turns; per-turn fields are reset from `TURN_DEFAULTS` at the start of each turn. `sender` is the agent that passed work to the current node this turn, or `None` when the node is handling the customer's message directly.
+- **Routing:** nodes return `Command(goto=..., update=...)` via `hand_off()` (to another agent, logged with a reason and added to Debug-mode steps as type `handoff`) or `reply()` (to `respond`). Each node's return type, `Command[Literal[...]]`, declares where it can go; LangGraph builds the edges from it, and `test_graph_edges_match_the_agent_design` pins them. When you add a route, update the `Literal` and that test.
+- **Entry:** the START edge (`route_turn`) sends the message to `PHASE_OWNER[phase]`. `respond` sets `phase` from `AGENT_PHASE[speaker]`, stamps `phase`/`agent` on the response and appends the exchange to `history` (last 20 messages). So whoever answered gets the next message.
+- **Dependencies:** nodes get the LLM from `runtime.context.llm` (`LakePlanContext`), never from state, so it isn't checkpointed.
+- **Sessions:** `PricingAgent` in `app/agent.py` is one session = one LangGraph thread (`thread_id` = browser session id) on a shared compiled graph with an `InMemorySaver`. `get_agent()` keeps up to 200 sessions and deletes the oldest thread when full; `reset()` deletes the thread. Each turn runs with `recursion_limit=10` (the longest real turn is 5 steps); `GraphRecursionError` becomes a "lost track" answer.
+- **Checkpoint types:** when the graph compiles, LangGraph limits what the checkpointer will restore to the classes named in `LakePlanState`'s type hints. Anything stored in the state must appear in those hints. Tests run in strict mode (`tests/conftest.py`), and `test_checkpoints_only_hold_allowlisted_types` fails if anything else gets in.
+- The LLM-calling helpers (`context_extractor.py`, `architecture_generator.py`, `planner.py`, `sql_generator.py`) are the nodes' tools and know nothing about the graph.
 
-Sessions are per-tab (client generates a UUID stored in `sessionStorage`). The server keeps up to 200 concurrent sessions in memory.
+Tests in `tests/test_agent_flow.py` drive whole sessions through the real graph with a scripted LLM (no credentials) and assert which agents ran in each turn (`PricingAgent.last_trace`). `tests/test_approval_flow.py` seeds a session with `graph.update_state(...)` and stubs the planner node by patching `app.graph.planner` before the graph is built.
+
+Sessions are per-tab: the client generates a UUID, stored in `sessionStorage`, which becomes the graph thread id.
 
 ## LLM abstraction
 
@@ -156,6 +160,9 @@ As a second layer, `duckdb_client.py` opens the connection with `enable_external
 | `DUCKDB_PATH` | Defaults to `data/pricing.duckdb` |
 | `MAX_ROWS` | Defaults to `100` |
 | `LOG_LEVEL` | Defaults to `INFO`; set to `DEBUG` for full prompt logging |
+| `LANGSMITH_TRACING` | Optional. `true` sends each turn to LangSmith as a `lakeplan-turn` trace with a span per node |
+| `LANGSMITH_API_KEY` | Required when `LANGSMITH_TRACING=true` |
+| `LANGSMITH_PROJECT` | Optional LangSmith project name (defaults to `default`) |
 
 ## `create_pricing_agent.py`
 

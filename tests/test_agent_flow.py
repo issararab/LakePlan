@@ -9,8 +9,13 @@ Run from the repo root:  python -m pytest tests
 from __future__ import annotations
 
 import json
+from contextvars import ContextVar
+from typing import Literal
 
 import pytest
+from langchain_core.tracers.base import BaseTracer
+from langchain_core.tracers.context import register_configure_hook
+from langgraph.types import Command
 
 from app.agent import PricingAgent
 from app.llm import LLMProvider
@@ -105,9 +110,9 @@ def test_full_session_ends_with_a_price_grounded_in_duckdb_rows():
         "context-extractor", "completeness-check", "architecture-generate",
         "planner", "sql-gen(attempt=1)", "pricing-synthesis",
     ]
-    assert agent._state.context.source_system == "SQL Server"
-    assert agent._state.context.num_tables == 50
-    assert agent._state.context.architecture_approved is True
+    assert agent.state["context"].source_system == "SQL Server"
+    assert agent.state["context"].num_tables == 50
+    assert agent.state["context"].architecture_approved is True
 
 
 def test_missing_fields_are_asked_as_plain_questions():
@@ -129,7 +134,7 @@ def test_change_request_adjusts_the_architecture():
 
     assert response.response_type == "architecture_proposal"
     assert response.answer == "ARCHITECTURE v2"
-    assert agent._state.context.proposed_architecture == "ARCHITECTURE v2"
+    assert agent.state["context"].proposed_architecture == "ARCHITECTURE v2"
 
 
 def test_ambiguous_reply_is_classified_by_the_llm():
@@ -167,9 +172,9 @@ def test_scenario_change_returns_to_context_collection_and_keeps_inputs():
     assert response.phase == AgentPhase.CONTEXT_COLLECTION
     assert "What would you like to change?" in response.answer
     assert llm.steps == []
-    assert agent._state.context.proposed_architecture is None
-    assert agent._state.context.architecture_approved is False
-    assert agent._state.context.num_tables == 50
+    assert agent.state["context"].proposed_architecture is None
+    assert agent.state["context"].architecture_approved is False
+    assert agent.state["context"].num_tables == 50
 
 
 def test_planner_can_ask_for_more_information():
@@ -293,21 +298,141 @@ def test_failed_lookups_stop_before_the_synthesizer():
     assert response.phase == AgentPhase.PRICING
 
 
-def test_a_handoff_loop_is_cut_off():
-    from app.agents import Agent, Handoff
+def test_a_routing_loop_is_cut_off(monkeypatch):
+    import app.graph as graph_module
+    from app.agents import hand_off
 
-    class PingPong(Agent):
-        name = "intake"
-        role = "test"
-        phase = AgentPhase.CONTEXT_COLLECTION
+    def looping_intake(state, runtime) -> Command[Literal["intake"]]:
+        return hand_off(state, "intake", "intake", "again")
 
-        def run(self, message, session, handoff):
-            return Handoff(to="intake", reason="again")
-
+    monkeypatch.setattr(graph_module, "intake", looping_intake)
     agent = PricingAgent(llm=_default_llm())
-    agent._agents["intake"] = PingPong(agent._llm)
 
     response = agent.handle("hello")
 
     assert "lost track" in response.answer
-    assert agent.last_trace == ["intake"] * 6
+    assert agent.last_trace and set(agent.last_trace) == {"intake"}
+
+
+# ---------------------------------------------------------------------------
+# The LangGraph graph and its checkpointer
+# ---------------------------------------------------------------------------
+
+def test_graph_edges_match_the_agent_design():
+    from app.graph import build_graph
+
+    edges = {(e.source, e.target) for e in build_graph().get_graph().edges}
+
+    assert edges == {
+        ("__start__", "intake"), ("__start__", "architect"), ("__start__", "planner"),
+        ("intake", "architect"), ("intake", "respond"),
+        ("architect", "planner"), ("architect", "intake"), ("architect", "respond"),
+        ("planner", "sql_analyst"), ("planner", "intake"), ("planner", "respond"),
+        ("sql_analyst", "synthesizer"), ("sql_analyst", "respond"),
+        ("synthesizer", "respond"),
+        ("respond", "__end__"),
+    }
+
+
+def test_each_session_is_its_own_thread_and_survives_between_handles():
+    from app.graph import build_graph
+
+    graph = build_graph()
+    llm = _default_llm()
+    alice = PricingAgent(llm=llm, session_id="alice", graph=graph)
+    _start(alice)
+
+    bob = PricingAgent(llm=llm, session_id="bob", graph=graph)
+    assert bob.state == {}
+
+    # A new handle on the same thread picks up where the session left off
+    alice_again = PricingAgent(llm=llm, session_id="alice", graph=graph)
+    assert alice_again.state["context"].source_system == "SQL Server"
+    assert alice_again.handle("About 50 tables, nightly batch, 10 analysts").agent == "architect"
+
+
+def test_reset_deletes_the_sessions_thread():
+    agent = PricingAgent(llm=_default_llm())
+    _start(agent)
+    assert agent.state
+
+    agent.reset()
+
+    assert agent.state == {}
+
+
+def test_registry_drops_the_oldest_session_when_full(monkeypatch):
+    import app.agent as agent_module
+
+    monkeypatch.setattr(agent_module, "_MAX_SESSIONS", 2)
+    monkeypatch.setattr(agent_module, "_sessions", type(agent_module._sessions)())
+    monkeypatch.setattr(agent_module, "_shared", {})
+    monkeypatch.setattr(agent_module, "get_llm_provider", lambda: _default_llm())
+
+    first = agent_module.get_agent("s1")
+    _start(first)
+    agent_module.get_agent("s2")
+    agent_module.get_agent("s3")
+
+    assert list(agent_module._sessions) == ["s2", "s3"]
+    assert first.state == {}
+
+
+class _RunRecorder(BaseTracer):
+    """Records every chain run, the way a LangSmith tracer sees them."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.runs = []
+
+    def _persist_run(self, run) -> None:
+        pass
+
+    def _on_chain_start(self, run) -> None:
+        self.runs.append(run)
+
+
+# Hook the recorder in the same way LangChain attaches the LangSmith tracer
+_recorder: ContextVar[_RunRecorder | None] = ContextVar("lakeplan_run_recorder", default=None)
+register_configure_hook(_recorder, inheritable=True)
+
+
+def test_each_turn_is_traced_as_one_run_with_a_span_per_agent():
+    """What LangSmith shows when tracing is on: one named run per turn, a child run per node."""
+    agent = PricingAgent(llm=_default_llm(), session_id="trace-me")
+    _to_approval(agent)
+
+    recorder = _RunRecorder()
+    token = _recorder.set(recorder)
+    try:
+        agent.handle("Yes, approve")
+    finally:
+        _recorder.reset(token)
+
+    [turn] = [run for run in recorder.runs if run.parent_run_id is None]
+    assert turn.name == "lakeplan-turn"
+    assert turn.extra["metadata"]["session_id"] == "trace-me"
+    nodes = [run.name for run in recorder.runs if run.parent_run_id == turn.id]
+    for node in ["architect", "planner", "sql_analyst", "synthesizer", "respond"]:
+        assert node in nodes
+
+
+def test_checkpoints_only_hold_allowlisted_types():
+    """Every class the graph stores must be on the checkpoint allowlist in app/graph.py.
+
+    LangGraph reports each class it restores from a checkpoint without it being on the
+    list (and, in strict mode, refuses to restore it). A full session must report none.
+    """
+    from langgraph.checkpoint.serde.event_hooks import register_serde_event_listener
+
+    events = []
+    unregister = register_serde_event_listener(events.append)
+    try:
+        agent = PricingAgent(llm=_default_llm())
+        _to_pricing(agent)  # stores context, phase, queries, query_results and the response
+        agent.handle("How much of that is storage?")
+        assert agent.state["context"].architecture_approved is True
+    finally:
+        unregister()
+
+    assert events == []
