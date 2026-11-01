@@ -163,6 +163,7 @@ Kept for reference only — it is the original Databricks notebook export (uses 
 
 ## Container image and Kubernetes
 
-- **Image:** `ghcr.io/issararab/lakeplan`, public, `linux/amd64` + `linux/arm64`. `.github/workflows/container-image.yml` pushes `latest` and `sha-<commit>` on every push to `main`, semver tags on `v*` git tags, and only builds on PRs. The Dockerfile runs as UID 10001 and sets `PYTHONDONTWRITEBYTECODE=1` so the app works on a read-only root filesystem.
+- **Tests in CI:** `.github/workflows/tests.yml` runs `pytest` on Python 3.11 for every PR. It is also a reusable workflow that the image workflow calls.
+- **Image:** `ghcr.io/issararab/lakeplan`, public, `linux/amd64` + `linux/arm64`. `.github/workflows/container-image.yml` runs `tests.yml` first and publishes only if it passes: `latest` and `sha-<commit>` on every push to `main`, semver tags on `v*` git tags. On PRs it only builds. The Dockerfile runs as UID 10001 and sets `PYTHONDONTWRITEBYTECODE=1` so the app works on a read-only root filesystem.
 - **Helm chart:** `deploy/helm/lakeplan`. Plain settings go in `config` (ConfigMap); secrets in `existingSecret` or `secrets`; both reach the container through `envFrom`. Keep `replicaCount: 1` unless sticky sessions are on: sessions are in memory per pod.
 - **Testing the chart:** `deploy/kind/smoke-test.sh` (needs docker, kind, kubectl, helm). `.github/workflows/helm.yml` runs `helm lint --strict` and the same script on kind for PRs. When you change the chart, run it locally first.
