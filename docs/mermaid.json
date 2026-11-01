@@ -1,0 +1,5 @@
+{
+  "theme": "default",
+  "htmlLabels": false,
+  "sequence": { "actorMargin": 20, "width": 110, "boxMargin": 6, "noteMargin": 6, "messageMargin": 28, "mirrorActors": false }
+}

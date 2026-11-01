@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" width="960" height="420" font-family="'Segoe UI', Arial, sans-serif">
+
+  <defs>
+    <marker id="fwd" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L10,4 z" fill="#475569"/>
+    </marker>
+    <marker id="back" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L10,4 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="db" markerUnits="userSpaceOnUse" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto-start-reverse">
+      <path d="M0,0 L0,6 L7,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="420" fill="#f9fafb" rx="14"/>
+
+  <!-- Title -->
+  <text x="480" y="28" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">LakePlan — the agent team</text>
+
+  <!-- ═══ Back edge: architect → intake (rethink) ═══ -->
+  <path d="M 610 62 L 610 46 L 350 46 L 350 60" fill="none" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="5,3" marker-end="url(#back)"/>
+  <rect x="402" y="38" width="156" height="15" rx="3" fill="#f9fafb"/>
+  <text x="480" y="49" text-anchor="middle" font-size="9.5" fill="#b45309">3 rejections in a row: rethink</text>
+
+  <!-- ═══ Customer ═══ -->
+  <rect x="40" y="92" width="120" height="36" rx="18" fill="#1e40af"/>
+  <text x="100" y="115" text-anchor="middle" font-size="11.5" font-weight="600" fill="white">Customer</text>
+  <line x1="160" y1="110" x2="207" y2="110" stroke="#475569" stroke-width="1.8" marker-end="url(#fwd)"/>
+  <text x="184" y="102" text-anchor="middle" font-size="8.5" fill="#475569">use case</text>
+
+  <!-- ═══ Intake ═══ -->
+  <rect x="210" y="62" width="180" height="96" rx="8" fill="white" stroke="#3b82f6" stroke-width="2"/>
+  <rect x="210" y="62" width="180" height="28" rx="8" fill="#2563eb"/>
+  <rect x="210" y="78" width="180" height="12" fill="#2563eb"/>
+  <text x="300" y="81" text-anchor="middle" font-size="11.5" font-weight="700" fill="white">🧾 Intake</text>
+  <text x="300" y="108" text-anchor="middle" font-size="9.5" fill="#1d4ed8">Interviews the customer until</text>
+  <text x="300" y="122" text-anchor="middle" font-size="9.5" fill="#1d4ed8">the requirements are complete</text>
+  <text x="300" y="145" text-anchor="middle" font-size="8" fill="#94a3b8">agents/intake.py</text>
+
+  <!-- Intake → Architect -->
+  <line x1="390" y1="110" x2="557" y2="110" stroke="#475569" stroke-width="1.8" marker-end="url(#fwd)"/>
+  <text x="474" y="102" text-anchor="middle" font-size="9.5" font-weight="600" fill="#334155">requirements complete</text>
+
+  <!-- ═══ Architect ═══ -->
+  <rect x="560" y="62" width="180" height="96" rx="8" fill="white" stroke="#22c55e" stroke-width="2"/>
+  <rect x="560" y="62" width="180" height="28" rx="8" fill="#16a34a"/>
+  <rect x="560" y="78" width="180" height="12" fill="#16a34a"/>
+  <text x="650" y="81" text-anchor="middle" font-size="11.5" font-weight="700" fill="white">🏗️ Architect</text>
+  <text x="650" y="108" text-anchor="middle" font-size="9.5" fill="#166534">Proposes the architecture and</text>
+  <text x="650" y="122" text-anchor="middle" font-size="9.5" fill="#166534">runs the approval loop</text>
+  <text x="650" y="145" text-anchor="middle" font-size="8" fill="#94a3b8">agents/architect.py</text>
+
+  <!-- Architect → Planner (approved) -->
+  <path d="M 650 158 L 650 195 L 270 195 L 270 229" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#fwd)"/>
+  <rect x="376" y="181" width="164" height="16" rx="3" fill="#f9fafb"/>
+  <text x="458" y="193" text-anchor="middle" font-size="9.5" font-weight="600" fill="#334155">approved + pricing brief</text>
+
+  <!-- Back edge: planner → intake (new scenario) -->
+  <line x1="225" y1="232" x2="225" y2="161" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="5,3" marker-end="url(#back)"/>
+  <text x="217" y="200" text-anchor="end" font-size="9.5" fill="#b45309">scenario changed</text>
+
+  <!-- ═══ Planner ═══ -->
+  <rect x="150" y="232" width="180" height="96" rx="8" fill="white" stroke="#a855f7" stroke-width="2"/>
+  <rect x="150" y="232" width="180" height="28" rx="8" fill="#9333ea"/>
+  <rect x="150" y="248" width="180" height="12" fill="#9333ea"/>
+  <text x="240" y="251" text-anchor="middle" font-size="11.5" font-weight="700" fill="white">🧭 Planner</text>
+  <text x="240" y="278" text-anchor="middle" font-size="9.5" fill="#6b21a8">Breaks the pricing question</text>
+  <text x="240" y="292" text-anchor="middle" font-size="9.5" fill="#6b21a8">into DuckDB lookups</text>
+  <text x="240" y="315" text-anchor="middle" font-size="8" fill="#94a3b8">agents/planner.py</text>
+
+  <!-- Planner → SQL analyst -->
+  <line x1="330" y1="280" x2="417" y2="280" stroke="#475569" stroke-width="1.8" marker-end="url(#fwd)"/>
+  <text x="374" y="272" text-anchor="middle" font-size="9.5" font-weight="600" fill="#334155">lookups</text>
+
+  <!-- ═══ SQL analyst ═══ -->
+  <rect x="420" y="232" width="180" height="96" rx="8" fill="white" stroke="#f59e0b" stroke-width="2"/>
+  <rect x="420" y="232" width="180" height="28" rx="8" fill="#d97706"/>
+  <rect x="420" y="248" width="180" height="12" fill="#d97706"/>
+  <text x="510" y="251" text-anchor="middle" font-size="11.5" font-weight="700" fill="white">🗄️ SQL analyst</text>
+  <text x="510" y="278" text-anchor="middle" font-size="9.5" fill="#92400e">Writes, validates and runs</text>
+  <text x="510" y="292" text-anchor="middle" font-size="9.5" fill="#92400e">read-only SQL</text>
+  <text x="510" y="315" text-anchor="middle" font-size="8" fill="#94a3b8">agents/sql_analyst.py</text>
+
+  <!-- SQL analyst ↔ DuckDB -->
+  <line x1="510" y1="330" x2="510" y2="351" stroke="#64748b" stroke-width="1.4" marker-start="url(#db)" marker-end="url(#db)"/>
+  <text x="518" y="344" font-size="8.5" fill="#64748b">read-only queries</text>
+  <ellipse cx="510" cy="390" rx="52" ry="9" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <rect x="458" y="362" width="104" height="28" fill="#fef3c7"/>
+  <line x1="458" y1="362" x2="458" y2="390" stroke="#d97706" stroke-width="1.5"/>
+  <line x1="562" y1="362" x2="562" y2="390" stroke="#d97706" stroke-width="1.5"/>
+  <ellipse cx="510" cy="362" rx="52" ry="9" fill="#fde68a" stroke="#d97706" stroke-width="1.5"/>
+  <text x="510" y="383" text-anchor="middle" font-size="10" font-weight="700" fill="#92400e">DuckDB</text>
+  <text x="510" y="396" text-anchor="middle" font-size="8" fill="#92400e">Azure prices</text>
+
+  <!-- SQL analyst → Synthesizer -->
+  <line x1="600" y1="280" x2="687" y2="280" stroke="#475569" stroke-width="1.8" marker-end="url(#fwd)"/>
+  <text x="644" y="272" text-anchor="middle" font-size="9.5" font-weight="600" fill="#334155">rows</text>
+
+  <!-- ═══ Synthesizer ═══ -->
+  <rect x="690" y="232" width="180" height="96" rx="8" fill="white" stroke="#ec4899" stroke-width="2"/>
+  <rect x="690" y="232" width="180" height="28" rx="8" fill="#be185d"/>
+  <rect x="690" y="248" width="180" height="12" fill="#be185d"/>
+  <text x="780" y="251" text-anchor="middle" font-size="11.5" font-weight="700" fill="white">✍️ Synthesizer</text>
+  <text x="780" y="278" text-anchor="middle" font-size="9.5" fill="#9d174d">Writes the estimate from</text>
+  <text x="780" y="292" text-anchor="middle" font-size="9.5" fill="#9d174d">the returned rows only</text>
+  <text x="780" y="315" text-anchor="middle" font-size="8" fill="#94a3b8">agents/synthesizer.py</text>
+
+  <!-- Synthesizer → estimate -->
+  <line x1="780" y1="328" x2="780" y2="351" stroke="#475569" stroke-width="1.8" marker-end="url(#fwd)"/>
+  <rect x="705" y="354" width="150" height="34" rx="17" fill="#1e40af"/>
+  <text x="780" y="375" text-anchor="middle" font-size="11" font-weight="600" fill="white">Grounded estimate</text>
+
+  <!-- Legend -->
+  <line x1="40" y1="402" x2="66" y2="402" stroke="#475569" stroke-width="1.8" marker-end="url(#fwd)"/>
+  <text x="72" y="405" font-size="8.5" fill="#6b7280">passes work on</text>
+  <line x1="150" y1="402" x2="176" y2="402" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="5,3" marker-end="url(#back)"/>
+  <text x="182" y="405" font-size="8.5" fill="#6b7280">hands back to intake</text>
+</svg>
