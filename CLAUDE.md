@@ -147,7 +147,7 @@ As a second layer, `duckdb_client.py` opens the connection with `enable_external
 | Variable | Purpose |
 |---|---|
 | `LLM_PROVIDER` | `databricks` (default), `anthropic`, or `openai_compatible` |
-| `DATABRICKS_HOST` | Workspace URL |
+| `DATABRICKS_HOST` | Workspace URL. Required when `LLM_PROVIDER=databricks`; the image has no default |
 | `DATABRICKS_TOKEN` | PAT |
 | `DATABRICKS_LLM_ENDPOINT` | Model serving endpoint name |
 | `ANTHROPIC_API_KEY` | Required when `LLM_PROVIDER=anthropic` |

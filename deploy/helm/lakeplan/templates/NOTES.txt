@@ -11,6 +11,14 @@ so the pod will not start until it is set, e.g.:
   helm upgrade {{ .Release.Name }} <chart> -n {{ .Release.Namespace }} --reuse-values --set existingSecret=lakeplan-llm
 {{- end }}
 
+{{- if and (eq $provider "databricks") (not .Values.config.DATABRICKS_HOST) }}
+
+WARNING: config.DATABRICKS_HOST is not set. Unless your Secret sets it, the pod will not start.
+Point it at your workspace, e.g.:
+
+  helm upgrade {{ .Release.Name }} <chart> -n {{ .Release.Namespace }} --reuse-values --set config.DATABRICKS_HOST=https://<workspace>.azuredatabricks.net
+{{- end }}
+
 {{- if .Values.ingress.enabled }}
 
 Open:

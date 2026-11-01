@@ -158,6 +158,15 @@ def test_databricks_targets_the_serving_endpoints_api(monkeypatch):
     assert llm.model == "my-endpoint"
 
 
+def test_missing_databricks_host_says_what_to_set(monkeypatch):
+    """The image has no default workspace, so a missing host must fail at startup with a clear message."""
+    monkeypatch.setenv("DATABRICKS_TOKEN", "dapi-x")
+    monkeypatch.setenv("DATABRICKS_LLM_ENDPOINT", "my-endpoint")
+
+    with pytest.raises(ValueError, match="DATABRICKS_HOST is not set"):
+        get_llm_provider()
+
+
 def test_empty_databricks_token_is_an_error_not_a_fallback(monkeypatch):
     """An empty token must fail clearly, never send OPENAI_API_KEY to Databricks instead."""
     monkeypatch.setenv("DATABRICKS_HOST", "https://adb-1.azuredatabricks.net")

@@ -75,19 +75,12 @@ The image is public on GitHub Container Registry, so there's nothing to log in t
 
 ```bash
 docker run --rm -p 8000:8000 \
-  -e DATABRICKS_TOKEN=<your_databricks_token> \
-  ghcr.io/issararab/lakeplan:latest
-```
-
-Open http://localhost:8000. To use your own workspace or model endpoint:
-
-```bash
-docker run --rm -p 8000:8000 \
-  -e DATABRICKS_TOKEN=<your_databricks_token> \
   -e DATABRICKS_HOST=https://your-workspace.azuredatabricks.net \
-  -e DATABRICKS_LLM_ENDPOINT=your-model-endpoint \
+  -e DATABRICKS_TOKEN=<your_databricks_token> \
   ghcr.io/issararab/lakeplan:latest
 ```
+
+Open http://localhost:8000. It calls the `databricks-claude-opus-4-7` serving endpoint in your workspace; add `-e DATABRICKS_LLM_ENDPOINT=<endpoint>` to use another one. To run it on the Anthropic API or on your own models instead, see [Run it on your own models](#-run-it-on-your-own-models).
 
 | Tag | Points to |
 |---|---|
@@ -112,7 +105,9 @@ kubectl create namespace lakeplan
 kubectl -n lakeplan create secret generic lakeplan-llm \
   --from-literal=DATABRICKS_TOKEN=<your_databricks_token>
 
-helm install lakeplan deploy/helm/lakeplan -n lakeplan --set existingSecret=lakeplan-llm
+helm install lakeplan deploy/helm/lakeplan -n lakeplan \
+  --set existingSecret=lakeplan-llm \
+  --set config.DATABRICKS_HOST=https://your-workspace.azuredatabricks.net
 helm test lakeplan -n lakeplan
 
 kubectl -n lakeplan port-forward svc/lakeplan 8000:80   # then open http://localhost:8000

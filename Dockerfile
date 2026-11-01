@@ -18,7 +18,6 @@ COPY app/ ./app/
 COPY data/ ./data/
 
 ENV LLM_PROVIDER=databricks
-ENV DATABRICKS_HOST=https://your-workspace.azuredatabricks.net
 ENV DATABRICKS_LLM_ENDPOINT=databricks-claude-opus-4-7
 ENV DUCKDB_PATH=data/pricing.duckdb
 ENV MAX_ROWS=100

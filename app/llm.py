@@ -126,11 +126,16 @@ def _databricks() -> tuple[BaseChatModel, str]:
     """Databricks model serving speaks the OpenAI Chat Completions API under /serving-endpoints."""
     from langchain_openai import ChatOpenAI
 
-    host = os.environ["DATABRICKS_HOST"].rstrip("/")
-    token = os.environ["DATABRICKS_TOKEN"]
+    host = os.environ.get("DATABRICKS_HOST", "").rstrip("/")
+    token = os.environ.get("DATABRICKS_TOKEN", "")
     endpoint = os.environ["DATABRICKS_LLM_ENDPOINT"]
+    if not host:
+        raise ValueError(
+            "DATABRICKS_HOST is not set. Set it to your workspace URL, "
+            "e.g. https://adb-1234567890.12.azuredatabricks.net, or pick another LLM_PROVIDER"
+        )
     if not token:
-        raise ValueError("DATABRICKS_TOKEN is empty")
+        raise ValueError("DATABRICKS_TOKEN is not set")
     return ChatOpenAI(base_url=f"{host}/serving-endpoints", api_key=token, model=endpoint), endpoint
 
 

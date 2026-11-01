@@ -48,6 +48,7 @@ helm upgrade --install "$RELEASE" "$ROOT/deploy/helm/lakeplan" \
   --set image.repository="$IMAGE_REPO" \
   --set image.tag="$IMAGE_TAG" \
   --set image.pullPolicy=Never \
+  --set config.DATABRICKS_HOST=https://placeholder.azuredatabricks.net \
   --set secrets.DATABRICKS_TOKEN=placeholder-not-a-real-token \
   --wait --timeout 3m
 
