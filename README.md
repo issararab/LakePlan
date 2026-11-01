@@ -1,5 +1,6 @@
 # LakePlan
 
+[![Tests](https://github.com/issararab/LakePlan/actions/workflows/tests.yml/badge.svg)](https://github.com/issararab/LakePlan/actions/workflows/tests.yml)
 [![Container image](https://github.com/issararab/LakePlan/actions/workflows/container-image.yml/badge.svg)](https://github.com/issararab/LakePlan/actions/workflows/container-image.yml)
 [![Helm chart](https://github.com/issararab/LakePlan/actions/workflows/helm.yml/badge.svg)](https://github.com/issararab/LakePlan/actions/workflows/helm.yml)
 [![ghcr.io/issararab/lakeplan](https://img.shields.io/badge/ghcr.io-issararab%2Flakeplan-2496ED?logo=docker&logoColor=white)](https://github.com/issararab/LakePlan/pkgs/container/lakeplan)
@@ -95,7 +96,7 @@ docker run --rm -p 8000:8000 \
 | `sha-<commit>` | One exact commit. Pin this for repeatable deploys |
 | `1.2.3`, `1.2` | Release tags (pushed from git tags `v1.2.3`) |
 
-The container runs as a non-root user (UID 10001) and has a built-in health check. [`container-image.yml`](.github/workflows/container-image.yml) rebuilds and publishes it on every push to `main`, and builds it (without publishing) on pull requests.
+The container runs as a non-root user (UID 10001) and has a built-in health check. [`container-image.yml`](.github/workflows/container-image.yml) runs the test suite on every push to `main` and publishes the image only if it passes. Pull requests run the tests ([`tests.yml`](.github/workflows/tests.yml)) and build the image without publishing it.
 
 ## ☸️ Deploy on Kubernetes
 

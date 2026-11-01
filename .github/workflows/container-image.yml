@@ -1,7 +1,8 @@
 # Builds the LakePlan image for amd64 and arm64 and publishes it to GitHub Container Registry.
-#   push to main  → ghcr.io/<owner>/lakeplan:latest and :sha-<commit>
-#   tag v1.2.3    → :1.2.3 and :1.2
-#   pull request  → build only, nothing is pushed
+#   push to main  → tests, then ghcr.io/<owner>/lakeplan:latest and :sha-<commit>
+#   tag v1.2.3    → tests, then :1.2.3 and :1.2
+#   pull request  → build only, nothing is pushed (tests.yml runs the tests on PRs)
+# Nothing is published unless the test suite passes.
 name: Container image
 
 on:
@@ -27,7 +28,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tests:
+    # Pull requests already run tests.yml on its own
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/tests.yml
+
   build:
+    needs: tests
+    # Runs when tests passed, or were skipped on a pull request
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     env:
       PUSH: ${{ github.event_name != 'pull_request' }}
