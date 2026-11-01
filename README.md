@@ -187,13 +187,13 @@ Open http://localhost:8000
 
 ## 🦙 Run it on your own models
 
-LakePlan isn't tied to a hosted LLM. Set `LLM_PROVIDER=openai_compatible` and it talks to any server that speaks the OpenAI Chat Completions API, so the whole agent can run on Llama, Qwen, Mistral or Gemma on your own machine or GPU box. No cloud account needed, and no prompt or customer detail leaves your network.
+LakePlan isn't tied to a hosted LLM. Every call goes through a [LangChain](https://python.langchain.com/) chat model, so switching backends is one setting. Set `LLM_PROVIDER=openai_compatible` and it talks to any server that speaks the OpenAI Chat Completions API, so the whole agent can run on Llama, Qwen, Mistral or Gemma on your own machine or GPU box. No cloud account needed, and no prompt or customer detail leaves your network.
 
-| `LLM_PROVIDER` | Backend | Settings |
-|---|---|---|
-| `databricks` *(default)* | Databricks model serving | `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_LLM_ENDPOINT` |
-| `anthropic` | Anthropic API | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` |
-| `openai_compatible` | Ollama · vLLM · LM Studio · llama.cpp · OpenAI | `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY` *(optional)* |
+| `LLM_PROVIDER` | Backend | LangChain model | Settings |
+|---|---|---|---|
+| `databricks` *(default)* | Databricks model serving | `ChatOpenAI` | `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_LLM_ENDPOINT` |
+| `anthropic` | Anthropic API | `ChatAnthropic` | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` |
+| `openai_compatible` | Ollama · vLLM · LM Studio · llama.cpp · OpenAI | `ChatOpenAI` | `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY` *(optional)* |
 
 ### ⚡ One command: LakePlan + Ollama in Docker Compose
 

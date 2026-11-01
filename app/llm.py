@@ -1,21 +1,36 @@
-"""LLM provider abstraction. Pick a backend with the LLM_PROVIDER env var.
+"""LLM access for LakePlan, built on LangChain chat models.
 
-- databricks         Databricks model serving (default)
-- anthropic          Anthropic Messages API
-- openai_compatible  Any OpenAI-compatible server: self-hosted open-weight models
-                     (Ollama, vLLM, LM Studio, llama.cpp) or a hosted API
+LLM_PROVIDER picks the backend:
+
+- databricks         ChatOpenAI on the workspace's /serving-endpoints API (default)
+- anthropic          ChatAnthropic
+- openai_compatible  ChatOpenAI on any OpenAI-compatible server: self-hosted models
+                     (Ollama, vLLM, LM Studio, llama.cpp) or OpenAI itself
+
+The rest of the app calls `LLMProvider.complete()`. `ChatModelLLM` implements it on top
+of any LangChain chat model, so adding a backend means adding one builder function.
 """
 
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from app import debug_collector
 
 logger = logging.getLogger(__name__)
 
-# Placeholder key for local servers that ignore auth. The OpenAI SDK refuses an empty key.
+# Placeholder key for local servers that ignore auth. The OpenAI client refuses an empty key.
 _NO_API_KEY = "not-needed"
+
+_ROLE_TO_MESSAGE: dict[str, type[BaseMessage]] = {
+    "system": SystemMessage,
+    "user": HumanMessage,
+    "assistant": AIMessage,
+}
 
 
 def _truncate(text: str, n: int = 200) -> str:
@@ -33,11 +48,18 @@ def _strip_reasoning(text: str) -> str:
     return text
 
 
-class LLMProvider(ABC):
-    """Abstract base class for LLM inference providers.
+def _to_langchain_messages(messages: list[dict], system: str | None) -> list[BaseMessage]:
+    """Turn {"role", "content"} dicts (plus an optional system prompt) into LangChain messages."""
+    converted: list[BaseMessage] = [SystemMessage(system)] if system else []
+    converted.extend(_ROLE_TO_MESSAGE[m["role"]](m["content"]) for m in messages)
+    return converted
 
-    Concrete implementations wrap a vendor SDK and expose a single
-    `complete` method so the rest of the codebase stays provider-agnostic.
+
+class LLMProvider(ABC):
+    """What the rest of LakePlan needs from an LLM: one call per pipeline step.
+
+    Attributes:
+        model: Model or endpoint name, for logs.
     """
 
     model: str = ""
@@ -46,103 +68,37 @@ class LLMProvider(ABC):
     def complete(self, messages: list[dict], system: str | None = None, step: str = "") -> str:
         """Send messages and return the assistant reply as a string.
 
-        step: optional label logged at INFO to identify which pipeline stage is calling.
+        step: label for the pipeline stage making the call (e.g. 'planner'). Used in logs,
+            Debug mode and as the LangChain run name.
         """
 
 
-class OpenAICompatibleLLMProvider(LLMProvider):
-    """LLM provider for any server that implements the OpenAI Chat Completions API.
+class ChatModelLLM(LLMProvider):
+    """Runs `complete()` on a LangChain chat model.
 
-    This is how LakePlan runs on self-hosted open-weight models: point it at Ollama,
-    vLLM, LM Studio or a llama.cpp server. It also works with OpenAI itself.
+    Each call carries its pipeline step as the LangChain run name, so callbacks and
+    LangSmith traces show `planner`, `sql-gen(attempt=1)` and so on instead of a generic
+    model call.
 
     Attributes:
-        base_url: API root including the version path, e.g. 'http://localhost:11434/v1'.
-            None means the OpenAI SDK default (api.openai.com).
-        model: Model name as the server knows it, e.g. 'qwen2.5:7b' on Ollama.
+        chat_model: The LangChain chat model that does the work.
+        model: Model or endpoint name, for logs.
     """
 
-    def __init__(
-        self,
-        base_url: str | None = None,
-        api_key: str | None = None,
-        model: str | None = None,
-    ) -> None:
-        """Reads OPENAI_BASE_URL, OPENAI_API_KEY and OPENAI_MODEL from env for any argument not passed."""
-        if model is None:
-            model = os.environ.get("OPENAI_MODEL", "")
-            if not model:
-                raise ValueError("OPENAI_MODEL must be set when LLM_PROVIDER=openai_compatible")
-        if base_url is None:
-            base_url = os.environ.get("OPENAI_BASE_URL") or None
-        if api_key is None:
-            api_key = os.environ.get("OPENAI_API_KEY") or _NO_API_KEY
+    def __init__(self, chat_model: BaseChatModel, model: str) -> None:
+        self.chat_model = chat_model
         self.model = model
-        self.base_url = base_url
-
-        from openai import OpenAI
-        self._client = OpenAI(base_url=base_url, api_key=api_key)
 
     def complete(self, messages: list[dict], system: str | None = None, step: str = "") -> str:
         """See base class."""
         _log_llm_call(step, messages, system)
-        full_messages = []
-        if system:
-            full_messages.append({"role": "system", "content": system})
-        full_messages.extend(messages)
-        response = self._client.chat.completions.create(
-            model=self.model,
-            messages=full_messages,
+        reply = self.chat_model.invoke(
+            _to_langchain_messages(messages, system),
+            config={"run_name": step or "llm", "tags": ["lakeplan"]},
         )
-        reply = _strip_reasoning(response.choices[0].message.content or "")
-        logger.debug("[%s] LLM reply: %s", step or "llm", _truncate(reply, 300))
-        return reply
-
-
-class DatabricksLLMProvider(OpenAICompatibleLLMProvider):
-    """LLM provider backed by a Databricks model-serving endpoint.
-
-    Databricks serves an OpenAI-compatible API at the workspace's /serving-endpoints path,
-    so this is the OpenAI-compatible provider with Databricks settings.
-
-    Attributes:
-        model: The serving endpoint name (from DATABRICKS_LLM_ENDPOINT env var).
-    """
-
-    def __init__(self) -> None:
-        """Reads DATABRICKS_HOST, DATABRICKS_TOKEN, and DATABRICKS_LLM_ENDPOINT from env."""
-        host = os.environ["DATABRICKS_HOST"].rstrip("/")
-        super().__init__(
-            base_url=f"{host}/serving-endpoints",
-            api_key=os.environ["DATABRICKS_TOKEN"],
-            model=os.environ["DATABRICKS_LLM_ENDPOINT"],
-        )
-
-
-class AnthropicLLMProvider(LLMProvider):
-    """LLM provider backed by the Anthropic Messages API.
-
-    Attributes:
-        model: Model ID from ANTHROPIC_MODEL env var; defaults to 'claude-opus-4-5'.
-    """
-
-    def __init__(self) -> None:
-        """Reads ANTHROPIC_API_KEY and optionally ANTHROPIC_MODEL from env."""
-        import anthropic
-        self._client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-        self.model = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-5")
-
-    def complete(self, messages: list[dict], system: str | None = None, step: str = "") -> str:
-        """See base class."""
-        _log_llm_call(step, messages, system)
-        kwargs: dict = dict(model=self.model, max_tokens=4096, messages=messages)
-        if system:
-            kwargs["system"] = system
-        response = self._client.messages.create(**kwargs)
-        block = response.content[0]
-        reply = block.text if hasattr(block, "text") else str(block)
-        logger.debug("[%s] LLM reply: %s", step or "llm", _truncate(reply, 300))
-        return reply
+        text = _strip_reasoning(reply.text)
+        logger.debug("[%s] LLM reply: %s", step or "llm", _truncate(text, 300))
+        return text
 
 
 def _log_llm_call(step: str, messages: list[dict], system: str | None) -> None:
@@ -162,16 +118,55 @@ def _log_llm_call(step: str, messages: list[dict], system: str | None) -> None:
     )
 
 
-_PROVIDERS: dict[str, type[LLMProvider]] = {
-    "databricks": DatabricksLLMProvider,
-    "anthropic": AnthropicLLMProvider,
-    "openai_compatible": OpenAICompatibleLLMProvider,
+# ---------------------------------------------------------------------------
+# Chat model per provider
+# ---------------------------------------------------------------------------
+
+def _databricks() -> tuple[BaseChatModel, str]:
+    """Databricks model serving speaks the OpenAI Chat Completions API under /serving-endpoints."""
+    from langchain_openai import ChatOpenAI
+
+    host = os.environ["DATABRICKS_HOST"].rstrip("/")
+    token = os.environ["DATABRICKS_TOKEN"]
+    endpoint = os.environ["DATABRICKS_LLM_ENDPOINT"]
+    if not token:
+        raise ValueError("DATABRICKS_TOKEN is empty")
+    return ChatOpenAI(base_url=f"{host}/serving-endpoints", api_key=token, model=endpoint), endpoint
+
+
+def _anthropic() -> tuple[BaseChatModel, str]:
+    from langchain_anthropic import ChatAnthropic
+
+    model = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-5")
+    return ChatAnthropic(model=model, api_key=os.environ["ANTHROPIC_API_KEY"], max_tokens=4096), model
+
+
+def _openai_compatible() -> tuple[BaseChatModel, str]:
+    """Ollama, vLLM, LM Studio, llama.cpp or OpenAI. No base URL means api.openai.com."""
+    from langchain_openai import ChatOpenAI
+
+    model = os.environ.get("OPENAI_MODEL", "")
+    if not model:
+        raise ValueError("OPENAI_MODEL must be set when LLM_PROVIDER=openai_compatible")
+    chat_model = ChatOpenAI(
+        base_url=os.environ.get("OPENAI_BASE_URL") or None,
+        api_key=os.environ.get("OPENAI_API_KEY") or _NO_API_KEY,
+        model=model,
+    )
+    return chat_model, model
+
+
+_PROVIDERS: dict[str, Callable[[], tuple[BaseChatModel, str]]] = {
+    "databricks": _databricks,
+    "anthropic": _anthropic,
+    "openai_compatible": _openai_compatible,
 }
 
 
 def get_llm_provider() -> LLMProvider:
-    """Build the provider named by LLM_PROVIDER (default 'databricks')."""
+    """Build the LLM named by LLM_PROVIDER (default 'databricks')."""
     provider = os.environ.get("LLM_PROVIDER", "databricks").lower()
     if provider not in _PROVIDERS:
         raise ValueError(f"Unknown LLM_PROVIDER: {provider!r}. Use one of: {', '.join(_PROVIDERS)}.")
-    return _PROVIDERS[provider]()
+    chat_model, model = _PROVIDERS[provider]()
+    return ChatModelLLM(chat_model, model)
